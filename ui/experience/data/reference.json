@@ -1,102 +1,155 @@
 {
-  "version": "1.2",
-  "updated_at": "2026-08-04T20:00:00-05:00",
+  "version": "1.3",
+  "updated_at": "2026-08-05T00:00:00-05:00",
   "entries": [
+    {
+      "id": "host-recovery-prerequisites",
+      "title": "Host Recovery",
+      "summary": "Prepare dockerhost from a blank Debian installation until it is ready to restore Harbr.",
+      "sections": [
+        {
+          "heading": "1. Install Debian",
+          "paragraphs": [
+            "Required operator action: Install a currently supported Debian release from the Debian installer, configure time and the official Debian package repositories, and apply available security updates.",
+            "Verification command: cat /etc/os-release && apt-get --version",
+            "Expected successful result: /etc/os-release identifies Debian and apt-get prints its installed version.",
+            "If verification fails: Confirm the Debian installation completed, /etc/os-release is readable, and the official Debian repositories are configured.",
+            "Blocks recovery: Yes. Harbr requires the supported Debian base system and package manager."
+          ]
+        },
+        {
+          "heading": "2. Configure the expected hostname",
+          "paragraphs": [
+            "Required operator action: Set the host's static hostname to dockerhost with sudo hostnamectl set-hostname dockerhost.",
+            "Verification command: hostnamectl --static",
+            "Expected successful result: The command prints dockerhost.",
+            "If verification fails: Check /etc/hostname, systemd-hostnamed, and whether the hostname change was applied with sufficient privileges.",
+            "Blocks recovery: Yes. The recovered host must use the expected operational identity before services are restored."
+          ]
+        },
+        {
+          "heading": "3. Verify network and Internet connectivity",
+          "paragraphs": [
+            "Required operator action: Configure the host's network interface, default route, DNS resolution, and Internet access using the environment's approved network settings.",
+            "Verification command: sudo apt-get update",
+            "Expected successful result: Debian retrieves repository metadata without DNS, routing, TLS, or repository errors.",
+            "If verification fails: Check interface state, addressing, the default route, DNS resolution, system time, CA trust, and Debian repository configuration.",
+            "Blocks recovery: Yes. Required packages and the documented Docker repository cannot be obtained without working network and Internet access."
+          ]
+        },
+        {
+          "heading": "4. Verify SSH access",
+          "paragraphs": [
+            "Required operator action: From the recovery workstation, use the management IP recorded in the protected network documentation to authenticate as chris. Verify the hostname only after the first SSH command succeeds; do not depend on local resolution of dockerhost during early recovery.",
+            "Verification command: read -r -p 'Recorded management IP: ' MANAGEMENT_IP && ssh \"chris@$MANAGEMENT_IP\" 'id -un' && ssh \"chris@$MANAGEMENT_IP\" 'hostnamectl --static'",
+            "Expected successful result: The first connection proves SSH authentication by printing chris. Only after that succeeds, the second connection verifies the remote host identity by printing dockerhost. Network and Internet connectivity were verified separately in step 3.",
+            "If verification fails: If no recorded management IP is available, recover it from protected network documentation, the approved address assignment record, or local console evidence rather than substituting hostname resolution. If the connection cannot be established, check that IP, the route, host SSH service, and firewall. If authentication fails, check the chris account and approved SSH key or credential. If authentication succeeds but the hostname is wrong, correct the static hostname before continuing.",
+            "Blocks recovery: Yes. Both SSH authentication to the recorded management IP and the subsequent remote hostname verification must succeed."
+          ]
+        },
+        {
+          "heading": "5. Restore and mount the expected storage",
+          "paragraphs": [
+            "Required operator action: Restore the protected storage using the environment's recovery records and mount it at /srv/storage. Do not guess a device, filesystem, or mount definition that is not recorded in the protected host configuration.",
+            "Verification command: findmnt --target /srv/storage",
+            "Expected successful result: findmnt reports a mounted filesystem whose target is /srv/storage.",
+            "If verification fails: Check that the correct storage device is present, the filesystem is healthy, the intended mount definition is restored, and the mount completed without errors.",
+            "Blocks recovery: Yes. Harbr's recorded backup root is under /srv/storage/backups/docker."
+          ]
+        },
+        {
+          "heading": "6. Verify that /srv/storage is writable",
+          "paragraphs": [
+            "Required operator action: Confirm the deployment user can create and remove a temporary file at the storage root without changing protected backup content.",
+            "Verification command: sudo -u chris sh -c 'test -w /srv/storage && touch /srv/storage/.harbr-write-test && rm /srv/storage/.harbr-write-test'",
+            "Expected successful result: The command exits with status 0, prints no error, and leaves no .harbr-write-test file behind.",
+            "If verification fails: Check whether the filesystem is mounted read-only, then check ownership, permissions, ACLs, available space, and filesystem health.",
+            "Blocks recovery: Yes. The deployment user needs writable recovery and runtime storage before Harbr can be restored safely."
+          ]
+        },
+        {
+          "heading": "7. Install or verify the required host software",
+          "paragraphs": [
+            "Required operator action: From the official Debian repositories, install the required Bash, coreutils, findutils, ca-certificates, curl, GPG, rclone, jq, sed, tar, gzip, xz-utils, acl, and systemd packages. Install Git when the trusted Harbr checkout will be cloned rather than restored from protected media.",
+            "Verification command: command -v bash stat find curl gpg rclone jq sed tar gzip xz setfacl systemctl && dpkg-query -W ca-certificates",
+            "Expected successful result: command -v prints a path for every required command and dpkg-query reports ca-certificates as installed.",
+            "If verification fails: Identify the missing command or package, confirm the official Debian repositories are reachable, and install the corresponding curated prerequisite before retrying.",
+            "Blocks recovery: Yes for every required component. Git alone is recommended rather than required when an intact trusted checkout will be restored separately."
+          ]
+        },
+        {
+          "heading": "8. Install or verify Docker Engine and Docker Compose",
+          "paragraphs": [
+            "Required operator action: Install Docker Engine and the Docker Compose plugin from Docker's official Debian apt repository, enable and start docker.service, and grant the deployment account the documented permission to communicate with the Docker daemon. Do not start restored application containers yet.",
+            "Verification command: docker --version && systemctl is-active docker.service && docker compose version && sudo -u chris docker info --format '{{.ServerVersion}}'",
+            "Expected successful result: Docker Engine prints its version, docker.service reports active, Docker Compose prints its version, and docker info prints the daemon's server version while running as chris.",
+            "If verification fails: Check Docker's current Debian repository and signing-key setup, the docker-ce and docker-compose-plugin packages, docker.service status and logs, daemon configuration, the Docker socket ownership and mode, and whether chris has the intended Docker access. Start a new login session after changing group membership.",
+            "Blocks recovery: Yes. Harbr-managed workloads require the active Docker Engine, the Docker Compose plugin, and proven Docker daemon access for chris."
+          ]
+        },
+        {
+          "heading": "9. Confirm that the host is ready to restore Harbr",
+          "paragraphs": [
+            "Required operator action: First run the automatic host checks. Then manually confirm and record that a specific verified backup archive and its checksum or manifest are available, the trusted Harbr source is available, and the separately protected configuration and secure credentials required for restoration have been recovered. Automatic checks alone do not authorize restoration.",
+            "Verification command: test \"$(hostnamectl --static)\" = dockerhost && sudo -u chris test -w /srv/storage && test -d /srv/storage/backups/docker && find /srv/storage/backups/docker -mindepth 1 -maxdepth 1 -type d -print -quit | grep -q . && systemctl is-active --quiet docker.service && docker compose version && sudo -u chris docker info --format '{{.ServerVersion}}' && printf '%s\\n' 'Automatic checks passed; manual recovery-material confirmation still required'",
+            "Expected successful result: The command exits with status 0, prints the Docker Compose and daemon versions, and explicitly states that automatic checks passed while manual recovery-material confirmation remains required. The host is ready to restore Harbr only after the operator also completes every manual confirmation in this step.",
+            "If verification fails: Run each automatic check separately and return to the corresponding failed step. If automatic checks pass but a selected verified archive, its integrity evidence, trusted source, protected configuration, or secure credentials cannot be confirmed manually, stop and recover that material; do not substitute current container state or an unverified archive.",
+            "Blocks recovery: Yes. Any failed automatic check or incomplete manual recovery-material confirmation means the host is not ready to restore Harbr."
+          ]
+        },
+        {
+          "heading": "10. Identify restoring Harbr as the next recovery step",
+          "paragraphs": [
+            "Required operator action: Proceed only after step 9's automatic checks and manual recovery-material confirmations are complete. Keep the selected verified archive unchanged and identify restoring Harbr from a copy as the next recovery step.",
+            "Verification command: test -d /srv/storage/backups/docker && printf '%s\\n' 'Next recovery step: restore Harbr'",
+            "Expected successful result: The command prints Next recovery step: restore Harbr.",
+            "If verification fails: Recheck the /srv/storage mount and protected backup root, then locate the trusted Harbr source, verified archive, protected configuration, and secure credentials required by the documented restore path.",
+            "Blocks recovery: Yes. Harbr restoration cannot begin until its trusted source and protected recovery material are available."
+          ]
+        }
+      ]
+    },
     {
       "id": "restore-guide",
       "title": "Restore Guide",
       "summary": "This operational recovery procedure is being developed.",
-      "sections": [{
-        "heading": "Recovery Center",
-        "paragraphs": [
-          "This operational recovery procedure is being developed.",
-          "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."
-        ]
-      }]
+      "sections": [{"heading": "Recovery Center", "paragraphs": ["This operational recovery procedure is being developed.", "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."]}]
     },
     {
       "id": "verification-chain",
       "title": "Verification Chain",
       "summary": "This operational recovery procedure is being developed.",
-      "sections": [{
-        "heading": "Recovery Center",
-        "paragraphs": [
-          "This operational recovery procedure is being developed.",
-          "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."
-        ]
-      }]
+      "sections": [{"heading": "Recovery Center", "paragraphs": ["This operational recovery procedure is being developed.", "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."]}]
     },
     {
       "id": "backup-retention",
       "title": "Backup and Retention Structure",
       "summary": "This operational recovery procedure is being developed.",
-      "sections": [{
-        "heading": "Recovery Center",
-        "paragraphs": [
-          "This operational recovery procedure is being developed.",
-          "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."
-        ]
-      }]
+      "sections": [{"heading": "Recovery Center", "paragraphs": ["This operational recovery procedure is being developed.", "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."]}]
     },
     {
       "id": "offsite-sync",
       "title": "OneDrive and Offsite Synchronization",
       "summary": "This operational recovery procedure is being developed.",
-      "sections": [{
-        "heading": "Recovery Center",
-        "paragraphs": [
-          "This operational recovery procedure is being developed.",
-          "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."
-        ]
-      }]
+      "sections": [{"heading": "Recovery Center", "paragraphs": ["This operational recovery procedure is being developed.", "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."]}]
     },
     {
       "id": "confidence-methodology",
       "title": "Confidence Methodology",
       "summary": "This operational recovery procedure is being developed.",
-      "sections": [{
-        "heading": "Recovery Center",
-        "paragraphs": [
-          "This operational recovery procedure is being developed.",
-          "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."
-        ]
-      }]
-    },
-    {
-      "id": "host-recovery-prerequisites",
-      "title": "Host Recovery Prerequisites",
-      "summary": "This operational recovery procedure is being developed.",
-      "sections": [{
-        "heading": "Recovery Center",
-        "paragraphs": [
-          "This operational recovery procedure is being developed.",
-          "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."
-        ]
-      }]
+      "sections": [{"heading": "Recovery Center", "paragraphs": ["This operational recovery procedure is being developed.", "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."]}]
     },
     {
       "id": "blank-debian-bootstrap",
       "title": "Blank Debian Bootstrap Procedure",
       "summary": "This operational recovery procedure is being developed.",
-      "sections": [{
-        "heading": "Recovery Center",
-        "paragraphs": [
-          "This operational recovery procedure is being developed.",
-          "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."
-        ]
-      }]
+      "sections": [{"heading": "Recovery Center", "paragraphs": ["This operational recovery procedure is being developed.", "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."]}]
     },
     {
       "id": "host-configuration-dependencies",
       "title": "Host Configuration Dependencies",
       "summary": "This operational recovery procedure is being developed.",
-      "sections": [{
-        "heading": "Recovery Center",
-        "paragraphs": [
-          "This operational recovery procedure is being developed.",
-          "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."
-        ]
-      }]
+      "sections": [{"heading": "Recovery Center", "paragraphs": ["This operational recovery procedure is being developed.", "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."]}]
     }
   ]
 }
