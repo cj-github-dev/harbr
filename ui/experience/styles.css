@@ -1025,7 +1025,7 @@ blockquote {
 
   .hero {
     min-height: 0;
-    padding: 500px 14px 36px;
+    padding: 112px 14px 36px;
   }
 
   .photo {
@@ -1040,10 +1040,14 @@ blockquote {
   }
 
   .ring-stage {
-    top: 29%;
-    left: 50%;
-    width: min(370px, 100vw);
+    position: relative;
+    top: auto;
+    left: auto;
+    width: 100%;
+    max-width: 370px;
     height: 370px;
+    margin: 0 auto clamp(56px, 8vw, 68px);
+    transform: none;
   }
 
   .confidence-ring {
@@ -1182,7 +1186,7 @@ blockquote {
 
 @media (max-width: 560px) {
   .hero {
-    padding-top: 480px;
+    padding-top: 104px;
   }
 
   .status-pill {
@@ -1190,7 +1194,6 @@ blockquote {
   }
 
   .ring-stage {
-    top: 28%;
     height: 350px;
   }
 
