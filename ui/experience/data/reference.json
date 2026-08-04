@@ -1,0 +1,133 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-08-04T12:00:00-05:00",
+  "entries": [
+    {
+      "id": "restore-guide",
+      "title": "Restore Guide",
+      "summary": "A calm, ordered path from an incident to a verified Harbr recovery.",
+      "sections": [
+        {
+          "heading": "Before restoring",
+          "paragraphs": [
+            "Confirm the affected site and choose the newest archive whose Restore Confidence and verification checks meet the recovery need. Record the archive identifier before changing the running environment.",
+            "Keep the source archive unchanged. A restore should work from a copy so the protected recovery point remains available if another attempt is needed."
+          ]
+        },
+        {
+          "heading": "Restore sequence",
+          "paragraphs": [
+            "Stop the affected workload, retrieve the selected archive, verify its recorded checksum, and extract it into an isolated recovery location. Review configuration and persistent data before starting containers.",
+            "Start dependencies before application services. Confirm container health, application reachability, and expected persistent data before returning the site to normal operation."
+          ]
+        },
+        {
+          "heading": "Close the recovery",
+          "paragraphs": [
+            "Document the archive used, the verification result, and any deviations from the expected sequence. Run a fresh protected backup only after the recovered service is known to be correct."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "verification-chain",
+      "title": "Verification Chain",
+      "summary": "How Harbr turns a completed backup into evidence that a restore is ready.",
+      "sections": [
+        {
+          "heading": "Local evidence",
+          "paragraphs": [
+            "Harbr confirms that an archive was created, its checksums were verified, and the archive remained readable. These checks establish that a usable local recovery point exists."
+          ]
+        },
+        {
+          "heading": "Service continuity",
+          "paragraphs": [
+            "The verification chain records whether paused containers restarted successfully and how long they were unavailable. A backup is not treated as healthy when protection leaves the workload in an unhealthy state."
+          ]
+        },
+        {
+          "heading": "Offsite evidence",
+          "paragraphs": [
+            "The chain is complete when the verified archive is synchronized to the configured offsite destination and restore documentation is present. Each check remains visible independently so a partial chain is never presented as complete."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "backup-retention",
+      "title": "Backup and Retention Structure",
+      "summary": "How immediate, daily, weekly, and monthly recovery points work together.",
+      "sections": [
+        {
+          "heading": "Immediate recovery",
+          "paragraphs": [
+            "Local archives provide the fastest recovery path. Their short retention window favors speed and recent recovery points while offsite copies protect against loss of the local host."
+          ]
+        },
+        {
+          "heading": "Offsite tiers",
+          "paragraphs": [
+            "Daily archives cover recent operational changes. Weekly archives extend the recovery window with fewer copies, and monthly archives preserve longer-term recovery points. Harbr reports each tier against its configured target rather than treating retention as a single pass-or-fail value."
+          ]
+        },
+        {
+          "heading": "Selection guidance",
+          "paragraphs": [
+            "Prefer the newest verified archive unless the incident requires a point before a known change. When an older archive is selected, Harbr shows only the evidence recorded for that point in time."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "offsite-sync",
+      "title": "OneDrive and Offsite Synchronization",
+      "summary": "What synchronization means and how to interpret an incomplete offsite state.",
+      "sections": [
+        {
+          "heading": "Synchronization state",
+          "paragraphs": [
+            "Synchronized means the verified archive completed transfer to the configured OneDrive destination. It does not expose credentials, local paths, remote identifiers, or archive downloads through the Harbr API."
+          ]
+        },
+        {
+          "heading": "When synchronization is incomplete",
+          "paragraphs": [
+            "A verified local archive may still support recovery when offsite synchronization is delayed, but it does not protect against loss of the local host. Harbr lowers or qualifies Restore Confidence so that distinction remains visible."
+          ]
+        },
+        {
+          "heading": "Operational response",
+          "paragraphs": [
+            "Confirm network access and the offsite synchronization service, then allow the existing transfer process to retry. Do not remove the verified local archive while the offsite copy is incomplete."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "confidence-methodology",
+      "title": "Confidence Methodology",
+      "summary": "How Harbr communicates restore readiness without hiding incomplete evidence.",
+      "sections": [
+        {
+          "heading": "High confidence",
+          "paragraphs": [
+            "High confidence requires a recent successful backup, a verified and readable local archive, successful container restart, completed offsite synchronization, and available restore documentation."
+          ]
+        },
+        {
+          "heading": "Moderate and low confidence",
+          "paragraphs": [
+            "Moderate confidence indicates that a usable local recovery point exists while freshness or offsite protection needs attention. Low confidence indicates an incomplete, failed, or stale recovery chain that should not be treated as restore-ready."
+          ]
+        },
+        {
+          "heading": "Unknown confidence",
+          "paragraphs": [
+            "Unknown is an explicit data state, not a neutral score. Harbr uses it when the evidence needed to determine recovery readiness is unavailable. Historical views never borrow current evidence to fill an unknown past value."
+          ]
+        }
+      ]
+    }
+  ]
+}

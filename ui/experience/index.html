@@ -6,13 +6,14 @@
 <meta name="theme-color" content="#07161a">
 <title>Harbr</title>
 <link rel="icon" href="/assets/harbr-mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/config/confidence-ring.generated.css">
 <link rel="stylesheet" href="/styles.css">
 <script src="/app.js" defer></script>
 </head>
 <body data-season="summer">
 <div id="startup" class="startup" aria-hidden="true">
-  <img src="/assets/harbr-mark.svg" alt="">
-  <strong>Harbr</strong>
+  <img id="startup-icon" src="/assets/harbr-mark.svg" alt="">
+  <strong id="startup-wordmark">Harbr</strong>
   <span id="startup-tagline">Recovery begins with confidence.</span>
 </div>
 
@@ -49,7 +50,7 @@
         <div class="ripple r5"></div>
         <div class="outer-halo"></div>
         <div class="confidence-ring">
-          <div class="living-light"></div>
+          <div class="confidence-sweep"></div>
           <div class="ring-copy">
             <span>Restore Confidence</span>
             <strong id="confidence-label">—</strong>
@@ -74,6 +75,7 @@
 
       <div id="archives" class="archive-strip">
         <h2>Recent Archives</h2>
+        <p id="historical-notice" class="historical-notice" role="status" hidden></p>
         <div id="archive-list"></div>
         <p id="archive-summary">Loading archive history…</p>
       </div>
@@ -108,5 +110,22 @@
   <a href="#archives">Archives</a>
   <a href="#reference">Reference</a>
 </nav>
+
+<dialog id="reference-detail" class="reference-detail" aria-labelledby="reference-detail-title">
+  <div class="reference-detail-header">
+    <div>
+      <p class="eyebrow">Reference Center</p>
+      <h2 id="reference-detail-title"></h2>
+    </div>
+    <button id="reference-detail-close" class="dialog-close" type="button" aria-label="Close reference detail">×</button>
+  </div>
+  <p id="reference-detail-summary" class="reference-detail-summary"></p>
+  <p id="reference-detail-timestamp" class="reference-detail-timestamp"></p>
+  <div id="reference-detail-content" class="reference-detail-content"></div>
+  <details id="reference-raw" class="reference-raw">
+    <summary>View raw JSON</summary>
+    <pre id="reference-raw-json" tabindex="0"></pre>
+  </details>
+</dialog>
 </body>
 </html>

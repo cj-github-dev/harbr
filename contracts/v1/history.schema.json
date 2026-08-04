@@ -57,6 +57,74 @@
           "container_downtime_seconds": {
             "type": "integer",
             "minimum": 0
+          },
+          "snapshot": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["generated_at", "confidence", "story", "coverage"],
+            "properties": {
+              "generated_at": { "type": ["string", "null"], "format": "date-time" },
+              "confidence": {
+                "type": ["object", "null"],
+                "additionalProperties": false,
+                "required": ["level", "message", "last_verified_at", "checks"],
+                "properties": {
+                  "level": { "type": "string", "enum": ["high", "moderate", "low", "unknown"] },
+                  "message": { "type": ["string", "null"] },
+                  "last_verified_at": { "type": ["string", "null"], "format": "date-time" },
+                  "checks": {
+                    "type": ["object", "null"],
+                    "additionalProperties": { "type": "boolean" }
+                  }
+                }
+              },
+              "story": {
+                "type": ["object", "null"],
+                "additionalProperties": false,
+                "required": ["started_at", "completed_at", "steps"],
+                "properties": {
+                  "started_at": { "type": ["string", "null"], "format": "date-time" },
+                  "completed_at": { "type": ["string", "null"], "format": "date-time" },
+                  "steps": {
+                    "type": ["array", "null"],
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["id", "label", "occurred_at", "status"],
+                      "properties": {
+                        "id": { "type": "string" },
+                        "label": { "type": "string" },
+                        "occurred_at": { "type": ["string", "null"], "format": "date-time" },
+                        "status": { "type": "string", "enum": ["complete", "warning", "failed", "pending"] }
+                      }
+                    }
+                  }
+                }
+              },
+              "coverage": {
+                "type": ["object", "null"],
+                "additionalProperties": false,
+                "required": ["tiers"],
+                "properties": {
+                  "tiers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["id", "label", "location", "current", "target", "state"],
+                      "properties": {
+                        "id": { "type": "string" },
+                        "label": { "type": "string" },
+                        "location": { "type": "string" },
+                        "current": { "type": "integer", "minimum": 0 },
+                        "target": { "type": "integer", "minimum": 1 },
+                        "state": { "type": "string", "enum": ["complete", "building", "warning", "failed"] }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
