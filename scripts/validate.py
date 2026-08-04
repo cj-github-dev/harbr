@@ -199,6 +199,7 @@ def validate_documentation() -> None:
             require(entry.get("title") == "Host Recovery", "Host Recovery has the wrong user-facing title")
             sections = entry.get("sections", [])
             require([section.get("heading") for section in sections] == host_recovery_headings, "Host Recovery steps are missing or out of order")
+            sections_by_heading = {section["heading"]: section for section in sections}
             for section in sections:
                 paragraphs = section.get("paragraphs", [])
                 require(len(paragraphs) == len(step_field_prefixes), f"Incomplete Host Recovery step: {section.get('heading')}")
@@ -206,6 +207,16 @@ def validate_documentation() -> None:
                     all(paragraph.startswith(prefix) for paragraph, prefix in zip(paragraphs, step_field_prefixes)),
                     f"Host Recovery step fields are missing or out of order: {section.get('heading')}",
                 )
+            ssh_step = "\n".join(sections_by_heading[host_recovery_headings[3]]["paragraphs"])
+            require("Recorded management IP:" in ssh_step and "chris@$MANAGEMENT_IP" in ssh_step, "Host Recovery SSH verification must use the recorded management IP")
+            require("ssh chris@dockerhost" not in ssh_step, "Host Recovery SSH verification must not depend on local hostname resolution")
+            require(ssh_step.index("'id -un'") < ssh_step.index("'hostnamectl --static'"), "Host Recovery must authenticate over SSH before verifying the hostname")
+            docker_step = "\n".join(sections_by_heading[host_recovery_headings[7]]["paragraphs"])
+            require("sudo -u chris docker info" in docker_step, "Host Recovery must prove Docker daemon access as chris")
+            readiness_step = "\n".join(sections_by_heading[host_recovery_headings[8]]["paragraphs"])
+            require("Automatic checks alone do not authorize restoration" in readiness_step, "Host Recovery must distinguish automatic checks from restore authorization")
+            for material in ("verified backup archive", "trusted Harbr source", "protected configuration", "secure credentials"):
+                require(material in readiness_step, f"Host Recovery manual readiness confirmation is missing: {material}")
             continue
         require(entry.get("summary") == placeholder_paragraphs[0], f"Guide summary is not the Recovery Center placeholder: {entry.get('id')}")
         require(

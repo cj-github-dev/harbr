@@ -40,11 +40,11 @@
         {
           "heading": "4. Verify SSH access",
           "paragraphs": [
-            "Required operator action: From the recovery workstation, connect to the deployment account on the restored host using its approved SSH credentials.",
-            "Verification command: ssh chris@dockerhost 'id -un && hostnamectl --static'",
-            "Expected successful result: The remote command prints chris and dockerhost on separate lines.",
-            "If verification fails: Check name resolution, network reachability, the host SSH service, firewall rules, the chris account, and the approved SSH key or credential.",
-            "Blocks recovery: Yes. Operator access must be proven before continuing with remote host recovery."
+            "Required operator action: From the recovery workstation, use the management IP recorded in the protected network documentation to authenticate as chris. Verify the hostname only after the first SSH command succeeds; do not depend on local resolution of dockerhost during early recovery.",
+            "Verification command: read -r -p 'Recorded management IP: ' MANAGEMENT_IP && ssh \"chris@$MANAGEMENT_IP\" 'id -un' && ssh \"chris@$MANAGEMENT_IP\" 'hostnamectl --static'",
+            "Expected successful result: The first connection proves SSH authentication by printing chris. Only after that succeeds, the second connection verifies the remote host identity by printing dockerhost. Network and Internet connectivity were verified separately in step 3.",
+            "If verification fails: If no recorded management IP is available, recover it from protected network documentation, the approved address assignment record, or local console evidence rather than substituting hostname resolution. If the connection cannot be established, check that IP, the route, host SSH service, and firewall. If authentication fails, check the chris account and approved SSH key or credential. If authentication succeeds but the hostname is wrong, correct the static hostname before continuing.",
+            "Blocks recovery: Yes. Both SSH authentication to the recorded management IP and the subsequent remote hostname verification must succeed."
           ]
         },
         {
@@ -80,27 +80,27 @@
         {
           "heading": "8. Install or verify Docker Engine and Docker Compose",
           "paragraphs": [
-            "Required operator action: Install Docker Engine and the Docker Compose plugin from Docker's official Debian apt repository, then enable and start docker.service. Do not start restored application containers yet.",
-            "Verification command: docker --version && systemctl is-active docker.service && docker compose version",
-            "Expected successful result: Docker Engine prints its version, docker.service reports active, and the Docker Compose plugin prints its version.",
-            "If verification fails: Check Docker's current Debian repository and signing-key setup, the docker-ce and docker-compose-plugin packages, docker.service logs, daemon configuration, and deployment-user permissions.",
-            "Blocks recovery: Yes. Harbr-managed workloads require both the active Docker Engine and the Docker Compose plugin."
+            "Required operator action: Install Docker Engine and the Docker Compose plugin from Docker's official Debian apt repository, enable and start docker.service, and grant the deployment account the documented permission to communicate with the Docker daemon. Do not start restored application containers yet.",
+            "Verification command: docker --version && systemctl is-active docker.service && docker compose version && sudo -u chris docker info --format '{{.ServerVersion}}'",
+            "Expected successful result: Docker Engine prints its version, docker.service reports active, Docker Compose prints its version, and docker info prints the daemon's server version while running as chris.",
+            "If verification fails: Check Docker's current Debian repository and signing-key setup, the docker-ce and docker-compose-plugin packages, docker.service status and logs, daemon configuration, the Docker socket ownership and mode, and whether chris has the intended Docker access. Start a new login session after changing group membership.",
+            "Blocks recovery: Yes. Harbr-managed workloads require the active Docker Engine, the Docker Compose plugin, and proven Docker daemon access for chris."
           ]
         },
         {
           "heading": "9. Confirm that the host is ready to restore Harbr",
           "paragraphs": [
-            "Required operator action: Review the results of steps 1 through 8 and continue only when every blocking verification has succeeded.",
-            "Verification command: test \"$(hostnamectl --static)\" = dockerhost && sudo -u chris test -w /srv/storage && test -d /srv/storage/backups/docker && systemctl is-active --quiet docker.service && docker compose version",
-            "Expected successful result: The command exits with status 0 and Docker Compose prints its version.",
-            "If verification fails: Run each verification separately and return to the corresponding failed step; do not substitute current container state for restored data or configuration.",
-            "Blocks recovery: Yes. A failed readiness check means the host is not ready to restore Harbr."
+            "Required operator action: First run the automatic host checks. Then manually confirm and record that a specific verified backup archive and its checksum or manifest are available, the trusted Harbr source is available, and the separately protected configuration and secure credentials required for restoration have been recovered. Automatic checks alone do not authorize restoration.",
+            "Verification command: test \"$(hostnamectl --static)\" = dockerhost && sudo -u chris test -w /srv/storage && test -d /srv/storage/backups/docker && find /srv/storage/backups/docker -mindepth 1 -maxdepth 1 -type d -print -quit | grep -q . && systemctl is-active --quiet docker.service && docker compose version && sudo -u chris docker info --format '{{.ServerVersion}}' && printf '%s\\n' 'Automatic checks passed; manual recovery-material confirmation still required'",
+            "Expected successful result: The command exits with status 0, prints the Docker Compose and daemon versions, and explicitly states that automatic checks passed while manual recovery-material confirmation remains required. The host is ready to restore Harbr only after the operator also completes every manual confirmation in this step.",
+            "If verification fails: Run each automatic check separately and return to the corresponding failed step. If automatic checks pass but a selected verified archive, its integrity evidence, trusted source, protected configuration, or secure credentials cannot be confirmed manually, stop and recover that material; do not substitute current container state or an unverified archive.",
+            "Blocks recovery: Yes. Any failed automatic check or incomplete manual recovery-material confirmation means the host is not ready to restore Harbr."
           ]
         },
         {
           "heading": "10. Identify restoring Harbr as the next recovery step",
           "paragraphs": [
-            "Required operator action: Confirm the protected Docker backup root is available, keep the selected verified archive unchanged, and prepare to restore Harbr from a copy using the separately protected configuration and credentials.",
+            "Required operator action: Proceed only after step 9's automatic checks and manual recovery-material confirmations are complete. Keep the selected verified archive unchanged and identify restoring Harbr from a copy as the next recovery step.",
             "Verification command: test -d /srv/storage/backups/docker && printf '%s\\n' 'Next recovery step: restore Harbr'",
             "Expected successful result: The command prints Next recovery step: restore Harbr.",
             "If verification fails: Recheck the /srv/storage mount and protected backup root, then locate the trusted Harbr source, verified archive, protected configuration, and secure credentials required by the documented restore path.",
