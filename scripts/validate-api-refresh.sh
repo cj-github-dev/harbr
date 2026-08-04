@@ -6,7 +6,7 @@ if (( EUID == 0 )); then
   exit 1
 fi
 
-for command in git jq find stat mktemp install; do
+for command in git jq find stat mktemp install ln; do
   command -v "$command" >/dev/null 2>&1 || {
     echo "Required command missing: $command" >&2
     exit 1
@@ -25,6 +25,7 @@ mkdir -p \
   "$TEST_ROOT/api/bootstrap/v1" \
   "$TEST_ROOT/plugins/docker" \
   "$TEST_ROOT/scripts" \
+  "$TEST_ROOT/state/recovery" \
   "$TEST_ROOT/state/sites" \
   "$TEST_ROOT/backups/2026-08-04_10-30-00" \
   "$TEST_ROOT/stubs"
@@ -32,7 +33,9 @@ mkdir -p \
 cp "$SOURCE_ROOT/.gitignore" "$SOURCE_ROOT/VERSION" "$TEST_ROOT/"
 cp "$SOURCE_ROOT/api/bootstrap/v1/"*.json "$TEST_ROOT/api/bootstrap/v1/"
 cp "$SOURCE_ROOT/state/sites/LDF.json" "$TEST_ROOT/state/sites/"
+cp "$SOURCE_ROOT/state/recovery/prerequisites.json" "$TEST_ROOT/state/recovery/"
 cp "$SOURCE_ROOT/plugins/docker/refresh-api.sh" "$TEST_ROOT/plugins/docker/"
+cp "$SOURCE_ROOT/plugins/docker/generate-inventory.sh" "$TEST_ROOT/plugins/docker/"
 cp "$SOURCE_ROOT/scripts/init-api.sh" "$TEST_ROOT/scripts/"
 
 cat > "$TEST_ROOT/backup.conf" <<'EOF'
@@ -93,6 +96,24 @@ run_refresh() {
 
 run_refresh
 run_refresh
+
+jq -e '.resources.inventory == "/api/v1/inventory.json"' "$TEST_ROOT/api/v1/index.json" >/dev/null
+jq -e '.inventory_status == "generated" and (.components | length) > 0' "$TEST_ROOT/api/v1/inventory.json" >/dev/null
+
+minimal_path="$TEST_ROOT/inventory-minimal-path"
+mkdir -p "$minimal_path"
+for command in bash jq date mktemp dirname mv rm head awk; do
+  ln -s "$(command -v "$command")" "$minimal_path/$command"
+done
+PATH="$minimal_path" \
+HARBR_ROOT="$TEST_ROOT" \
+PREREQUISITES_CONFIG="$TEST_ROOT/state/recovery/prerequisites.json" \
+SITE_CONFIG="$TEST_ROOT/state/sites/LDF.json" \
+  "$TEST_ROOT/plugins/docker/generate-inventory.sh" "$TEST_ROOT/minimal-inventory.json"
+jq -e '
+  .inventory_status == "generated"
+  and any(.components[]; .detected.status == "missing" or .detected.status == "unavailable")
+' "$TEST_ROOT/minimal-inventory.json" >/dev/null
 
 for file in "$TEST_ROOT/api/v1/"*.json; do
   jq empty "$file"

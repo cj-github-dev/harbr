@@ -7,6 +7,8 @@ BACKUP_CONFIG="${BACKUP_CONFIG:-/etc/docker-backup.conf}"
 BACKUP_STATUS="${BACKUP_STATUS:-/var/lib/docker-backup/status.json}"
 BACKUP_HISTORY="${BACKUP_HISTORY:-/var/lib/docker-backup/history.jsonl}"
 SITE_CONFIG="${SITE_CONFIG:-${HARBR_ROOT}/state/sites/LDF.json}"
+PREREQUISITES_CONFIG="${PREREQUISITES_CONFIG:-${HARBR_ROOT}/state/recovery/prerequisites.json}"
+INVENTORY_GENERATOR="${INVENTORY_GENERATOR:-${HARBR_ROOT}/plugins/docker/generate-inventory.sh}"
 API_DIR="${HARBR_ROOT}/api/v1"
 TMP_ROOT="${HARBR_ROOT}/state/.api-build"
 
@@ -33,6 +35,16 @@ done
 
 [[ -r "$SITE_CONFIG" ]] || {
   echo "Harbr site configuration missing: $SITE_CONFIG" >&2
+  exit 1
+}
+
+[[ -r "$PREREQUISITES_CONFIG" ]] || {
+  echo "Harbr recovery prerequisites missing: $PREREQUISITES_CONFIG" >&2
+  exit 1
+}
+
+[[ -x "$INVENTORY_GENERATOR" ]] || {
+  echo "Harbr inventory generator is not executable: $INVENTORY_GENERATOR" >&2
   exit 1
 }
 
@@ -381,6 +393,11 @@ jq -n \
     generated_at: $generated_at
   }' > "$TMP_DIR/system.json"
 
+HARBR_ROOT="$HARBR_ROOT" \
+PREREQUISITES_CONFIG="$PREREQUISITES_CONFIG" \
+SITE_CONFIG="$SITE_CONFIG" \
+  "$INVENTORY_GENERATOR" "$TMP_DIR/inventory.json"
+
 jq -n \
   --arg site_id "$site_id" \
   --arg site_name "$site_name" \
@@ -406,7 +423,8 @@ jq -n \
       story: "/api/v1/story.json",
       history: "/api/v1/history.json",
       coverage: "/api/v1/coverage.json",
-      system: "/api/v1/system.json"
+      system: "/api/v1/system.json",
+      inventory: "/api/v1/inventory.json"
     }
   }' > "$TMP_DIR/index.json"
 
@@ -414,7 +432,7 @@ for file in "$TMP_DIR"/*.json; do
   jq empty "$file"
 done
 
-for name in site confidence story history coverage system index; do
+for name in site confidence story history coverage system inventory index; do
   publish_temp="$API_DIR/.$name.json.publish.$$"
   install -m 0644 "$TMP_DIR/$name.json" "$publish_temp"
   mv -f "$publish_temp" "$API_DIR/$name.json"

@@ -1,0 +1,22 @@
+{
+  "api_version": "v1",
+  "site_id": "LDF",
+  "inventory_status": "not-generated",
+  "generated_at": null,
+  "host": {
+    "site_name": "Lac du Flambeau",
+    "debian_release": null,
+    "debian_version_id": null,
+    "kernel_version": null,
+    "architecture": null
+  },
+  "components": [],
+  "systemd_units": [],
+  "identities": {
+    "deployment_user": null,
+    "harbr_api_group": {
+      "name": "harbr-api",
+      "exists": null
+    }
+  }
+}

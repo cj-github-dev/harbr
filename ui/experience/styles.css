@@ -520,24 +520,33 @@ main {
   transition: color 200ms ease, filter 200ms ease;
 }
 
-.summary-grid .glance-icon[data-status="healthy"] {
-  color: #9bd37c;
-  filter: drop-shadow(0 0 9px rgba(155, 211, 124, 0.3));
+.summary-grid article[data-status="healthy"] {
+  --glance-status-color: #9bd37c;
+  --glance-status-filter: drop-shadow(0 0 9px rgba(155, 211, 124, 0.3));
 }
 
-.summary-grid .glance-icon[data-status="warning"] {
-  color: #efa65d;
-  filter: drop-shadow(0 0 9px rgba(239, 166, 93, 0.26));
+.summary-grid article[data-status="warning"] {
+  --glance-status-color: #efa65d;
+  --glance-status-filter: drop-shadow(0 0 9px rgba(239, 166, 93, 0.26));
 }
 
-.summary-grid .glance-icon[data-status="failure"] {
-  color: var(--danger);
-  filter: drop-shadow(0 0 9px rgba(228, 135, 111, 0.28));
+.summary-grid article[data-status="failure"] {
+  --glance-status-color: var(--danger);
+  --glance-status-filter: drop-shadow(0 0 9px rgba(228, 135, 111, 0.28));
 }
 
-.summary-grid .glance-icon[data-status="unknown"] {
-  color: #9d9b93;
-  filter: none;
+.summary-grid article[data-status="unknown"] {
+  --glance-status-color: #9d9b93;
+  --glance-status-filter: none;
+}
+
+.summary-grid .glance-icon,
+.summary-grid article strong {
+  color: var(--glance-status-color);
+}
+
+.summary-grid .glance-icon {
+  filter: var(--glance-status-filter);
 }
 
 .archive-view-content {
@@ -556,6 +565,7 @@ main {
   font-size: 10px;
   letter-spacing: 0.09em;
   text-transform: uppercase;
+  transition: color 200ms ease;
 }
 
 .summary-grid small {

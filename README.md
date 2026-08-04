@@ -27,6 +27,8 @@ Harbr keeps source data and generated deployment data in separate locations:
 - `api/bootstrap/v1/` contains source-controlled bootstrap/example API
   documents. These make a fresh clone usable before its first backup refresh.
 - `state/sites/` contains source-controlled site configuration.
+- `state/recovery/prerequisites.json` contains the curated, source-controlled
+  host recovery requirement model. It is not a dump of installed packages.
 - `api/v1/` contains the active published runtime API. Its JSON files are
   generated, ignored by Git, and served read-only by Nginx.
 - `state/.api-build/` contains ignored, per-refresh temporary build
@@ -192,6 +194,28 @@ each entry has a stable ID, title, summary, and ordered sections containing
 headings and paragraphs. The UI also presents every resource published by the
 API index with a formatted view and raw JSON view.
 
+### Host recovery inventory
+
+`/api/v1/inventory.json` is generated on Linux by
+`plugins/docker/generate-inventory.sh` during the existing non-root API refresh.
+It merges the curated prerequisite definitions with safe detections for Debian,
+kernel, architecture, curated package and command versions, relevant systemd
+units, the current deployment identity, and the existence of the `harbr-api`
+group. Missing commands and unavailable inspections are represented explicitly;
+they do not abort inventory generation or the rest of the API refresh.
+
+The bootstrap inventory deliberately reports `not-generated` with unknown host
+facts rather than hard-coding a development or production host. A live refresh
+replaces it atomically with generated data. The inventory schema is
+`contracts/v1/inventory.schema.json`, and the resource is published through the
+versioned API index so the existing Reference Center presents formatted and raw
+views without frontend-specific host values.
+
+The inventory never reads configuration contents, environment dumps, rclone
+credentials, repository authentication, private keys, tokens, passwords, or
+unrelated account records. Component requirements that cannot be detected from
+the host remain manually maintained in `state/recovery/prerequisites.json`.
+
 ## Historical snapshots
 
 `/api/v1/history.json` remains backward-compatible and keeps the existing run
@@ -219,12 +243,25 @@ On the Linux deployment host, also run:
 
 ```bash
 ./scripts/validate-api-refresh.sh
+mkdir -p state/.api-build
+./plugins/docker/generate-inventory.sh state/.api-build/inventory-validation.json
+jq -e '.inventory_status == "generated" and (.components | length) > 0' state/.api-build/inventory-validation.json
+git status --short
 ```
 
+The standalone inventory command must run as the deployment user on Linux. On
+`dockerhost`, inspect `host`, `components`, `systemd_units`, and `identities` in
+the resulting JSON; confirm missing tools are explicit, no credential content is
+present, and the final Git status is empty. Then run the normal API refresh and
+open the Inventory resource in the Reference Center before marking the PR ready.
+
 The repository validator checks JSON parsing, internal resources, startup
-sequence markup, archive interaction hooks, historical snapshots, and the
-required first-party documentation set. It also confirms that every Confidence
-Ring export value has exactly one mapping and that the generated CSS is current.
+sequence markup, archive interaction hooks, historical snapshots, the curated
+prerequisite structure, safe inventory fields, inventory publication, semantic
+Today at a Glance color coupling, and the required first-party documentation
+set. It also confirms that every Confidence Ring export value has exactly one
+mapping, that the generated CSS is current, and that both approved ring assets
+retain their frozen hashes.
 JavaScript syntax is checked directly by the browser-compatible Node parser
 without adding a project dependency.
 
@@ -273,7 +310,9 @@ It must never publish:
 - raw logs;
 - archive downloads;
 - local backup paths;
-- recovery secrets.
+- recovery secrets;
+- complete environment-variable dumps;
+- unrelated host users or groups.
 
 ## Current site
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import runpy
 from pathlib import Path
 from urllib.parse import urlparse
@@ -20,12 +21,33 @@ REFRESH_UNIT_PATH = ROOT / "deploy" / "systemd" / "harbr-api-refresh.service"
 BACKUP_DROP_IN_PATH = ROOT / "deploy" / "systemd" / "docker-backup.service.d" / "harbr-api-refresh.conf"
 RCLONE_INSTALLER_PATH = ROOT / "scripts" / "install-rclone-remote.sh"
 HOST_PREFLIGHT_PATH = ROOT / "scripts" / "preflight-refresh-host.sh"
+PREREQUISITES_PATH = ROOT / "state" / "recovery" / "prerequisites.json"
+INVENTORY_GENERATOR_PATH = ROOT / "plugins" / "docker" / "generate-inventory.sh"
+APPROVED_RING_HASHES = {
+    RING_CONFIG_PATH: "82c98ec70f69468062d73cbb56b3181c0ce645fa94742ba71f041f1476d8bc43",
+    RING_CSS_PATH: "ae2262fbc2c03126da5df61f296e1e6d55b74de00b09d0ba06e89ffb36bfbfe8",
+}
 REQUIRED_GUIDES = {
     "restore-guide",
     "verification-chain",
     "backup-retention",
     "offsite-sync",
     "confidence-methodology",
+    "host-recovery-prerequisites",
+    "blank-debian-bootstrap",
+    "host-configuration-dependencies",
+}
+REQUIRED_RECOVERY_CATEGORIES = {
+    "base-operating-system",
+    "container-runtime",
+    "source-control",
+    "offsite-sync",
+    "data-processing",
+    "network-trust",
+    "archive-filesystem",
+    "access-control",
+    "service-management",
+    "administrative-tool",
 }
 
 
@@ -45,6 +67,7 @@ def validate_json() -> None:
     for path in sorted((ROOT / "contracts" / "v1").glob("*.json")):
         load_json(path)
     load_json(REFERENCE_PATH)
+    load_json(PREREQUISITES_PATH)
 
 
 def validate_internal_resources() -> None:
@@ -76,6 +99,9 @@ def validate_confidence_ring_config() -> None:
     styles = (ROOT / "ui" / "experience" / "styles.css").read_text(encoding="utf-8")
     for _, (variable, _) in mappings.items():
         require(f"var({variable})" in styles, f"Production ring does not consume {variable}")
+    for path, approved_hash in APPROVED_RING_HASHES.items():
+        actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+        require(actual_hash == approved_hash, f"Approved Confidence Ring asset changed: {path.name}")
 
 
 def validate_startup() -> None:
@@ -119,6 +145,14 @@ def validate_archives() -> None:
     ):
         require(f'id="{icon_id}"' in html, f"Semantic glance icon missing {icon_id}")
 
+    styles = (ROOT / "ui" / "experience" / "styles.css").read_text(encoding="utf-8")
+    require("card.dataset.status = status" in app, "Glance status is not applied to the shared card state")
+    require("--glance-status-color" in styles, "Semantic heading and icon color variable is missing")
+    require(
+        ".summary-grid .glance-icon,\n.summary-grid article strong" in styles,
+        "Glance icons and headings do not consume the same semantic color",
+    )
+
     history = load_json(API_SOURCE_ROOT / "history.json")
     require(history.get("runs"), "History fixture must contain at least one run")
     for run in history["runs"]:
@@ -140,6 +174,61 @@ def validate_documentation() -> None:
             require(section.get("heading") and section.get("paragraphs"), f"Incomplete section in {entry.get('id')}")
 
 
+def validate_recovery_prerequisites() -> None:
+    source = load_json(PREREQUISITES_PATH)
+    require(source.get("schema_version") == 1, "Unsupported prerequisite schema")
+    components = source.get("components", [])
+    require(components, "Recovery prerequisite catalog is empty")
+    required_fields = {
+        "id", "name", "category", "purpose", "requirement_level", "installation_source",
+        "package", "command", "configuration_dependency", "verification_command", "recovery_notes",
+    }
+    ids = set()
+    categories = set()
+    for component in components:
+        require(required_fields <= component.keys(), f"Incomplete prerequisite: {component.get('id')}")
+        require(component["requirement_level"] in {"required", "recommended", "optional"}, f"Invalid requirement level: {component['id']}")
+        require(component["id"] not in ids, f"Duplicate prerequisite: {component['id']}")
+        ids.add(component["id"])
+        categories.add(component["category"])
+    require(REQUIRED_RECOVERY_CATEGORIES <= categories, f"Missing recovery categories: {sorted(REQUIRED_RECOVERY_CATEGORIES - categories)}")
+    github_cli = next(component for component in components if component["id"] == "github-cli")
+    require(github_cli["requirement_level"] == "optional", "GitHub CLI must not be presented as a restore requirement")
+
+
+def validate_inventory() -> None:
+    inventory = load_json(API_SOURCE_ROOT / "inventory.json")
+    require(inventory.get("api_version") == "v1", "Inventory fixture is not versioned")
+    require(inventory.get("inventory_status") == "not-generated", "Bootstrap inventory must not fabricate host detection")
+    for field in ("generated_at", "host", "components", "systemd_units", "identities"):
+        require(field in inventory, f"Inventory fixture lacks {field}")
+
+    forbidden_fragments = ("password", "token", "private_key", "secret", "credential", "environment")
+
+    def inspect_keys(value, path="inventory"):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                lowered = key.lower()
+                require(not any(fragment in lowered for fragment in forbidden_fragments), f"Unsafe inventory field: {path}.{key}")
+                inspect_keys(child, f"{path}.{key}")
+        elif isinstance(value, list):
+            for position, child in enumerate(value):
+                inspect_keys(child, f"{path}[{position}]")
+
+    inspect_keys(inventory)
+    generator = INVENTORY_GENERATOR_PATH.read_text(encoding="utf-8")
+    for marker in (
+        "component_version()",
+        "dpkg-query",
+        "docker-backup.timer",
+        "harbr-api-refresh.service",
+        'harbr_api_group: {name: "harbr-api"',
+        'inventory_status: "generated"',
+    ):
+        require(marker in generator, f"Inventory generator missing {marker}")
+    require("rclone.conf" not in generator or "SOURCE_CONFIG" not in generator, "Inventory generator must not inspect rclone credential contents")
+
+
 def validate_refresh_deployment() -> None:
     unit = REFRESH_UNIT_PATH.read_text(encoding="utf-8")
     drop_in = BACKUP_DROP_IN_PATH.read_text(encoding="utf-8")
@@ -158,6 +247,8 @@ def validate_refresh_deployment() -> None:
     require("g:harbr-api:r" in drop_in, "Backup metadata access must use the Harbr role group")
     require("EUID == 0" in refresh, "API refresh must refuse root execution")
     require('source_file in "$BACKUP_STATUS" "$BACKUP_HISTORY"' in refresh, "API refresh lacks source permission checks")
+    require('"$INVENTORY_GENERATOR" "$TMP_DIR/inventory.json"' in refresh, "API refresh does not generate inventory")
+    require("site confidence story history coverage system inventory index" in refresh, "Inventory is not atomically published")
     for marker in (
         'DEST_CONFIG="${DEST_CONFIG:-/var/lib/harbr/rclone/rclone.conf}"',
         'REMOTE_NAME="${REMOTE_NAME:-OneDrive}"',
@@ -178,6 +269,8 @@ def main() -> None:
     validate_startup()
     validate_archives()
     validate_documentation()
+    validate_recovery_prerequisites()
+    validate_inventory()
     validate_refresh_deployment()
     print("Harbr validation passed")
 
