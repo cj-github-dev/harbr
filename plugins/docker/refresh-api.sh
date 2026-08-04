@@ -36,8 +36,25 @@ done
   exit 1
 }
 
+for source_file in "$BACKUP_STATUS" "$BACKUP_HISTORY"; do
+  if [[ -e "$source_file" && ! -r "$source_file" ]]; then
+    echo "Harbr source data exists but is not readable by $(id -un): $source_file" >&2
+    exit 1
+  fi
+done
+
 # shellcheck disable=SC1090
 source "$BACKUP_CONFIG"
+
+[[ -d "$BACKUP_ROOT" && -r "$BACKUP_ROOT" && -x "$BACKUP_ROOT" ]] || {
+  echo "Backup root must be readable and searchable by $(id -un): $BACKUP_ROOT" >&2
+  exit 1
+}
+
+if [[ -n "${RCLONE_CONFIG:-}" && ! -r "$RCLONE_CONFIG" ]]; then
+  echo "Rclone configuration is not readable by $(id -un): $RCLONE_CONFIG" >&2
+  exit 1
+fi
 
 mkdir -p "$API_DIR" "$TMP_ROOT"
 chmod 0755 "$API_DIR" "$TMP_ROOT"

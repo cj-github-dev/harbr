@@ -16,6 +16,8 @@ APP_PATH = ROOT / "ui" / "experience" / "app.js"
 REFERENCE_PATH = ROOT / "ui" / "experience" / "data" / "reference.json"
 RING_CONFIG_PATH = ROOT / "ui" / "experience" / "config" / "confidence-ring.json"
 RING_CSS_PATH = ROOT / "ui" / "experience" / "config" / "confidence-ring.generated.css"
+REFRESH_UNIT_PATH = ROOT / "deploy" / "systemd" / "harbr-api-refresh.service"
+BACKUP_DROP_IN_PATH = ROOT / "deploy" / "systemd" / "docker-backup.service.d" / "harbr-api-refresh.conf"
 REQUIRED_GUIDES = {
     "restore-guide",
     "verification-chain",
@@ -115,6 +117,23 @@ def validate_documentation() -> None:
             require(section.get("heading") and section.get("paragraphs"), f"Incomplete section in {entry.get('id')}")
 
 
+def validate_refresh_deployment() -> None:
+    unit = REFRESH_UNIT_PATH.read_text(encoding="utf-8")
+    drop_in = BACKUP_DROP_IN_PATH.read_text(encoding="utf-8")
+    refresh = (ROOT / "plugins" / "docker" / "refresh-api.sh").read_text(encoding="utf-8")
+    for marker in (
+        "User=chris",
+        "SupplementaryGroups=harbr-api",
+        "BACKUP_CONFIG=/etc/harbr/backup-api.conf",
+        "RCLONE_CONFIG=/etc/harbr/rclone.conf",
+    ):
+        require(marker in unit, f"Refresh service missing {marker}")
+    require("OnSuccess=harbr-api-refresh.service" in drop_in, "Backup service does not trigger API refresh")
+    require("ExecStartPost=/usr/bin/setfacl" in drop_in, "Backup service does not refresh metadata ACLs")
+    require("EUID == 0" in refresh, "API refresh must refuse root execution")
+    require('source_file in "$BACKUP_STATUS" "$BACKUP_HISTORY"' in refresh, "API refresh lacks source permission checks")
+
+
 def main() -> None:
     validate_json()
     validate_internal_resources()
@@ -122,6 +141,7 @@ def main() -> None:
     validate_startup()
     validate_archives()
     validate_documentation()
+    validate_refresh_deployment()
     print("Harbr validation passed")
 
 

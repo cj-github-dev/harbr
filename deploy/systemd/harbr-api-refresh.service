@@ -1,0 +1,22 @@
+[Unit]
+Description=Publish Harbr recovery confidence API
+Documentation=file:/srv/docker/harbr/README.md
+After=docker-backup.service
+
+[Service]
+Type=oneshot
+User=chris
+Group=chris
+SupplementaryGroups=harbr-api
+WorkingDirectory=/srv/docker/harbr
+Environment=HARBR_ROOT=/srv/docker/harbr
+Environment=BACKUP_CONFIG=/etc/harbr/backup-api.conf
+Environment=RCLONE_CONFIG=/etc/harbr/rclone.conf
+ExecStart=/srv/docker/harbr/plugins/docker/refresh-api.sh
+UMask=0022
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+
+[Install]
+WantedBy=multi-user.target
