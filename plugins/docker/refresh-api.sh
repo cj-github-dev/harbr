@@ -328,7 +328,7 @@ for file in "$TMP_DIR"/*.json; do
 done
 
 for name in site confidence story history coverage system index; do
-  install -m 0640 -o chris -g chris "$TMP_DIR/$name.json" "$API_DIR/$name.json"
+  install -m 0644 -o chris -g chris "$TMP_DIR/$name.json" "$API_DIR/$name.json"
 done
 
 rm -f "$TMP_DIR/raw-status.json" "$TMP_DIR/history-source.json"
