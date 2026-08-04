@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harbr.nshsystems.com/contracts/v1/inventory.schema.json",
+  "title": "Harbr Host Inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version", "site_id", "inventory_status", "generated_at", "host", "components", "systemd_units", "identities"],
+  "properties": {
+    "api_version": { "const": "v1" },
+    "site_id": { "type": "string" },
+    "inventory_status": { "type": "string", "enum": ["generated", "not-generated"] },
+    "generated_at": { "type": ["string", "null"], "format": "date-time" },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["site_name", "debian_release", "debian_version_id", "kernel_version", "architecture"],
+      "properties": {
+        "site_name": { "type": "string" },
+        "debian_release": { "type": ["string", "null"] },
+        "debian_version_id": { "type": ["string", "null"] },
+        "kernel_version": { "type": ["string", "null"] },
+        "architecture": { "type": ["string", "null"] }
+      }
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "category", "purpose", "requirement_level", "installation_source", "package", "command", "configuration_dependency", "verification_command", "recovery_notes", "detected"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "category": { "type": "string" },
+          "purpose": { "type": "string" },
+          "requirement_level": { "type": "string", "enum": ["required", "recommended", "optional"] },
+          "installation_source": { "type": "string" },
+          "package": { "type": ["string", "null"] },
+          "command": { "type": ["string", "null"] },
+          "configuration_dependency": { "type": "string" },
+          "verification_command": { "type": "string" },
+          "recovery_notes": { "type": "string" },
+          "detected": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status", "version", "package_status", "package_version"],
+            "properties": {
+              "status": { "type": "string", "enum": ["available", "missing", "unavailable"] },
+              "version": { "type": ["string", "null"] },
+              "package_status": { "type": "string", "enum": ["installed", "missing", "not-applicable", "unavailable"] },
+              "package_version": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "systemd_units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "inspection_status", "load_state", "active_state", "unit_file_state"],
+        "properties": {
+          "name": { "type": "string" },
+          "inspection_status": { "type": "string", "enum": ["available", "unavailable"] },
+          "load_state": { "type": ["string", "null"] },
+          "active_state": { "type": ["string", "null"] },
+          "unit_file_state": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "identities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deployment_user", "harbr_api_group"],
+      "properties": {
+        "deployment_user": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["name", "primary_group", "member_of_harbr_api"],
+          "properties": {
+            "name": { "type": "string" },
+            "primary_group": { "type": "string" },
+            "member_of_harbr_api": { "type": "boolean" }
+          }
+        },
+        "harbr_api_group": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "exists"],
+          "properties": {
+            "name": { "const": "harbr-api" },
+            "exists": { "type": ["boolean", "null"] }
+          }
+        }
+      }
+    }
+  }
+}

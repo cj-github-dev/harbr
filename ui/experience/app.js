@@ -7,7 +7,8 @@ const defaultResources = {
   story: '/api/v1/story.json',
   history: '/api/v1/history.json',
   coverage: '/api/v1/coverage.json',
-  system: '/api/v1/system.json'
+  system: '/api/v1/system.json',
+  inventory: '/api/v1/inventory.json'
 };
 
 const resourceDescriptions = {
@@ -16,7 +17,8 @@ const resourceDescriptions = {
   story: 'The ordered events recorded for the newest backup and verification run.',
   history: 'Recent archive metrics and the point-in-time evidence captured for each run.',
   coverage: 'Current local, daily, weekly, and monthly protection against configured retention targets.',
-  system: 'Read-only product version, generation time, and next scheduled protection run.'
+  system: 'Read-only product version, generation time, and next scheduled protection run.',
+  inventory: 'Curated host recovery prerequisites merged with safe detected versions, service states, and Harbr-scoped identities.'
 };
 
 const appState = {
@@ -98,7 +100,8 @@ function semanticConfidenceStatus(level) {
 
 function setGlanceStatus(iconId, status) {
   const icon = $(`#${iconId}`);
-  if (icon) icon.dataset.status = status;
+  const card = icon?.closest('article');
+  if (card) card.dataset.status = status;
 }
 
 function appendCheck(label, value) {
@@ -334,6 +337,7 @@ function resourceTimestamp(name, data) {
   if (name === 'story') return data.completed_at;
   if (name === 'history') return data.runs?.[0]?.completed_at;
   if (name === 'system') return data.generated_at;
+  if (name === 'inventory') return data.generated_at;
   if (name === 'site') return data.first_protected_at;
   return null;
 }
