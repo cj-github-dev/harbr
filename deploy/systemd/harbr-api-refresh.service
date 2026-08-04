@@ -11,7 +11,7 @@ SupplementaryGroups=harbr-api
 WorkingDirectory=/srv/docker/harbr
 Environment=HARBR_ROOT=/srv/docker/harbr
 Environment=BACKUP_CONFIG=/etc/harbr/backup-api.conf
-Environment=RCLONE_CONFIG=/etc/harbr/rclone.conf
+Environment=RCLONE_CONFIG=/var/lib/harbr/rclone/rclone.conf
 ExecStart=/srv/docker/harbr/plugins/docker/refresh-api.sh
 UMask=0022
 Nice=10

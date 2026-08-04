@@ -3,9 +3,10 @@ set -Eeuo pipefail
 umask 077
 
 SOURCE_CONFIG="${SOURCE_CONFIG:-/root/.config/rclone/rclone.conf}"
-DEST_CONFIG="${DEST_CONFIG:-/etc/harbr/rclone.conf}"
+DEST_CONFIG="${DEST_CONFIG:-/var/lib/harbr/rclone/rclone.conf}"
 REMOTE_NAME="${REMOTE_NAME:-OneDrive}"
-ACCESS_GROUP="${ACCESS_GROUP:-harbr-api}"
+DEPLOY_USER="${DEPLOY_USER:-chris}"
+DEPLOY_GROUP="${DEPLOY_GROUP:-chris}"
 
 if (( EUID != 0 )); then
   echo "Run this installer as root so it can read the source rclone configuration." >&2
@@ -24,8 +25,13 @@ done
   exit 1
 }
 
-getent group "$ACCESS_GROUP" >/dev/null || {
-  echo "Required access group does not exist: $ACCESS_GROUP" >&2
+getent passwd "$DEPLOY_USER" >/dev/null || {
+  echo "Deployment user does not exist: $DEPLOY_USER" >&2
+  exit 1
+}
+
+getent group "$DEPLOY_GROUP" >/dev/null || {
+  echo "Deployment group does not exist: $DEPLOY_GROUP" >&2
   exit 1
 }
 
@@ -52,8 +58,8 @@ if (( ${#remotes[@]} != 1 )) || [[ "${remotes[0]}" != "$REMOTE_NAME:" ]]; then
 fi
 
 destination_dir="$(dirname "$DEST_CONFIG")"
-install -d -o root -g "$ACCESS_GROUP" -m 0750 "$destination_dir"
-install -o root -g "$ACCESS_GROUP" -m 0640 "$temp_config" "$DEST_CONFIG"
+install -d -o "$DEPLOY_USER" -g "$DEPLOY_GROUP" -m 0700 "$destination_dir"
+install -o "$DEPLOY_USER" -g "$DEPLOY_GROUP" -m 0600 "$temp_config" "$DEST_CONFIG"
 
 echo "Installed dedicated Harbr rclone remote: $REMOTE_NAME"
 echo "Configuration: $DEST_CONFIG"

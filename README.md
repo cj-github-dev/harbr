@@ -58,7 +58,7 @@ Install the launcher and its permissions as follows:
 
 ```bash
 cd /srv/docker/harbr
-command -v setfacl
+./scripts/preflight-refresh-host.sh
 sudo groupadd --force harbr-api
 sudo usermod --append --groups harbr-api chris
 sudo install -d -o root -g harbr-api -m 0750 /etc/harbr
@@ -75,14 +75,19 @@ sudo install -o root -g root -m 0644 deploy/systemd/docker-backup.service.d/harb
 sudo systemctl daemon-reload
 ```
 
-The allowlisted backup-config extraction keeps the deployed paths and retention
+The preflight exits before installation with an explicit instruction to install
+the `acl` package when `setfacl` is unavailable. The allowlisted backup-config
+extraction keeps the deployed paths and retention
 targets synchronized without exposing unrelated backup secrets. Repeat it when
 those settings change. The rclone installer reads the root-owned configuration,
 extracts only the `[OneDrive]` remote, verifies that no other remote is present,
-and installs the result as `/etc/harbr/rclone.conf` with owner/group
-`root:harbr-api` and mode `0640`. Run it again when the OneDrive credentials
-rotate. Unrelated root rclone remotes and credentials are never made readable
-to the Harbr role.
+and installs the result as `/var/lib/harbr/rclone/rclone.conf`. Its directory is
+owned by `chris:chris` with mode `0700`, and the config is mode `0600`, so the
+service can atomically persist refreshed OAuth tokens without exposing the
+credentials to other users or the metadata-reader group. Run the installer
+again when the source OneDrive credentials are deliberately replaced.
+Unrelated root rclone remotes and credentials are never copied from the private
+source configuration.
 
 The backup root is already `chris:chris 0755`, which is sufficient for counting
 its timestamped child directories; no recursive archive permission change is
@@ -90,8 +95,7 @@ needed. The ACLs allow members of `harbr-api` to read existing and newly created
 metadata while the backup process retains root ownership. The systemd drop-in
 reapplies the file ACL after every backup before the non-root refresh is
 triggered, including when the backup script atomically replaces a metadata
-file. Install the host's `acl` package first if `command -v setfacl` prints no
-path.
+file.
 
 If an older deployment already has root-owned generated output, repair it once
 before deploying this change:
@@ -109,22 +113,27 @@ next scheduled run:
 
 ```bash
 sudo -u chris -g harbr-api test -r /etc/harbr/backup-api.conf
-sudo -u chris -g harbr-api test -r /etc/harbr/rclone.conf
 sudo -u chris -g harbr-api test -r /var/lib/docker-backup/status.json
 sudo -u chris -g harbr-api test -r /var/lib/docker-backup/history.jsonl
 sudo -u chris -g harbr-api test -r /srv/storage/backups/docker
-sudo -u chris -g harbr-api env RCLONE_CONFIG=/etc/harbr/rclone.conf rclone listremotes
-sudo -u chris -g harbr-api env RCLONE_CONFIG=/etc/harbr/rclone.conf rclone lsf --dirs-only "OneDrive:Docker Systems/LDF Backup Center/backups/daily"
+sudo -u chris -g chris test -w /var/lib/harbr/rclone
+sudo -u chris -g chris test -w /var/lib/harbr/rclone/rclone.conf
+sudo -u chris -g chris env RCLONE_CONFIG=/var/lib/harbr/rclone/rclone.conf rclone listremotes
+sudo -u chris -g chris env RCLONE_CONFIG=/var/lib/harbr/rclone/rclone.conf rclone lsf --dirs-only "OneDrive:Docker Systems/LDF Backup Center/backups/daily"
+sudo stat -c '%U:%G %a %n' /var/lib/harbr/rclone /var/lib/harbr/rclone/rclone.conf
 sudo systemctl start harbr-api-refresh.service
 sudo systemctl show harbr-api-refresh.service -p User -p Group -p Result
 git status --short
 ```
 
 The expected service properties are `User=chris`, `Group=chris`, and
-`Result=success`; `rclone listremotes` must print only `OneDrive:`, and Git
-status must remain empty. Do not enable the oneshot service directly. The
-backup service triggers it after each successful backup, and a failed backup
-does not publish a misleading new API snapshot.
+`Result=success`; `rclone listremotes` must print only `OneDrive:`. The `lsf`
+command must complete without a token-save permission error, including when
+OneDrive refreshes its OAuth token. Afterward, the runtime directory and file
+must remain `chris:chris` modes `0700` and `0600`, respectively, and Git status
+must remain empty. Do not enable the oneshot service directly. The backup
+service triggers it after each successful backup, and a failed backup does not
+publish a misleading new API snapshot.
 
 ### Fresh deployment initialization
 

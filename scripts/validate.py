@@ -19,6 +19,7 @@ RING_CSS_PATH = ROOT / "ui" / "experience" / "config" / "confidence-ring.generat
 REFRESH_UNIT_PATH = ROOT / "deploy" / "systemd" / "harbr-api-refresh.service"
 BACKUP_DROP_IN_PATH = ROOT / "deploy" / "systemd" / "docker-backup.service.d" / "harbr-api-refresh.conf"
 RCLONE_INSTALLER_PATH = ROOT / "scripts" / "install-rclone-remote.sh"
+HOST_PREFLIGHT_PATH = ROOT / "scripts" / "preflight-refresh-host.sh"
 REQUIRED_GUIDES = {
     "restore-guide",
     "verification-chain",
@@ -123,11 +124,12 @@ def validate_refresh_deployment() -> None:
     drop_in = BACKUP_DROP_IN_PATH.read_text(encoding="utf-8")
     refresh = (ROOT / "plugins" / "docker" / "refresh-api.sh").read_text(encoding="utf-8")
     rclone_installer = RCLONE_INSTALLER_PATH.read_text(encoding="utf-8")
+    host_preflight = HOST_PREFLIGHT_PATH.read_text(encoding="utf-8")
     for marker in (
         "User=chris",
         "SupplementaryGroups=harbr-api",
         "BACKUP_CONFIG=/etc/harbr/backup-api.conf",
-        "RCLONE_CONFIG=/etc/harbr/rclone.conf",
+        "RCLONE_CONFIG=/var/lib/harbr/rclone/rclone.conf",
     ):
         require(marker in unit, f"Refresh service missing {marker}")
     require("OnSuccess=harbr-api-refresh.service" in drop_in, "Backup service does not trigger API refresh")
@@ -135,8 +137,17 @@ def validate_refresh_deployment() -> None:
     require("g:harbr-api:r" in drop_in, "Backup metadata access must use the Harbr role group")
     require("EUID == 0" in refresh, "API refresh must refuse root execution")
     require('source_file in "$BACKUP_STATUS" "$BACKUP_HISTORY"' in refresh, "API refresh lacks source permission checks")
-    for marker in ('REMOTE_NAME="${REMOTE_NAME:-OneDrive}"', "listremotes", '${#remotes[@]} != 1', "-m 0640"):
+    for marker in (
+        'DEST_CONFIG="${DEST_CONFIG:-/var/lib/harbr/rclone/rclone.conf}"',
+        'REMOTE_NAME="${REMOTE_NAME:-OneDrive}"',
+        "listremotes",
+        '${#remotes[@]} != 1',
+        '-m 0700 "$destination_dir"',
+        '-m 0600 "$temp_config"',
+    ):
         require(marker in rclone_installer, f"Dedicated rclone installer missing {marker}")
+    require('command" == "setfacl"' in host_preflight, "Host preflight must explain the missing acl dependency")
+    require("Install the acl package" in host_preflight, "Host preflight lacks acl installation guidance")
 
 
 def main() -> None:
