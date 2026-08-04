@@ -18,6 +18,7 @@ RING_CONFIG_PATH = ROOT / "ui" / "experience" / "config" / "confidence-ring.json
 RING_CSS_PATH = ROOT / "ui" / "experience" / "config" / "confidence-ring.generated.css"
 REFRESH_UNIT_PATH = ROOT / "deploy" / "systemd" / "harbr-api-refresh.service"
 BACKUP_DROP_IN_PATH = ROOT / "deploy" / "systemd" / "docker-backup.service.d" / "harbr-api-refresh.conf"
+RCLONE_INSTALLER_PATH = ROOT / "scripts" / "install-rclone-remote.sh"
 REQUIRED_GUIDES = {
     "restore-guide",
     "verification-chain",
@@ -121,6 +122,7 @@ def validate_refresh_deployment() -> None:
     unit = REFRESH_UNIT_PATH.read_text(encoding="utf-8")
     drop_in = BACKUP_DROP_IN_PATH.read_text(encoding="utf-8")
     refresh = (ROOT / "plugins" / "docker" / "refresh-api.sh").read_text(encoding="utf-8")
+    rclone_installer = RCLONE_INSTALLER_PATH.read_text(encoding="utf-8")
     for marker in (
         "User=chris",
         "SupplementaryGroups=harbr-api",
@@ -130,8 +132,11 @@ def validate_refresh_deployment() -> None:
         require(marker in unit, f"Refresh service missing {marker}")
     require("OnSuccess=harbr-api-refresh.service" in drop_in, "Backup service does not trigger API refresh")
     require("ExecStartPost=/usr/bin/setfacl" in drop_in, "Backup service does not refresh metadata ACLs")
+    require("g:harbr-api:r" in drop_in, "Backup metadata access must use the Harbr role group")
     require("EUID == 0" in refresh, "API refresh must refuse root execution")
     require('source_file in "$BACKUP_STATUS" "$BACKUP_HISTORY"' in refresh, "API refresh lacks source permission checks")
+    for marker in ('REMOTE_NAME="${REMOTE_NAME:-OneDrive}"', "listremotes", '${#remotes[@]} != 1', "-m 0640"):
+        require(marker in rclone_installer, f"Dedicated rclone installer missing {marker}")
 
 
 def main() -> None:
