@@ -8,8 +8,20 @@ Its purpose is to answer one question:
 
 > Can I recover right now?
 
-Harbr 1.0 Founder's Edition begins with the Lac du Flambeau site and the
+Harbr v4 Founder's Edition begins with the Lac du Flambeau site and the
 existing Docker backup implementation.
+
+## Web experience
+
+The interface is intentionally small: plain HTML, CSS, JavaScript, and JSON.
+It has no package dependencies, build step, or generated frontend output.
+
+The Docker Compose service exposes the UI and read-only JSON API together.
+Run `docker compose up -d`, then open `http://localhost:8088`. The experience
+reads live documents from `/api/v1/`; it never inspects the host directly.
+
+The v4 experience retains Harbr's startup animation, Confidence Ring,
+seasonal landscape, glass surfaces, typography, and responsive navigation.
 
 ## Architecture
 
