@@ -1,231 +1,102 @@
 {
-  "version": "1.1",
-  "updated_at": "2026-08-04T18:00:00-05:00",
+  "version": "1.2",
+  "updated_at": "2026-08-04T20:00:00-05:00",
   "entries": [
     {
       "id": "restore-guide",
       "title": "Restore Guide",
-      "summary": "A calm, ordered path from an incident to a verified Harbr recovery.",
-      "sections": [
-        {
-          "heading": "Before restoring",
-          "paragraphs": [
-            "Confirm the affected site and choose the newest archive whose Restore Confidence and verification checks meet the recovery need. Record the archive identifier before changing the running environment.",
-            "Keep the source archive unchanged. A restore should work from a copy so the protected recovery point remains available if another attempt is needed."
-          ]
-        },
-        {
-          "heading": "Restore sequence",
-          "paragraphs": [
-            "Stop the affected workload, retrieve the selected archive, verify its recorded checksum, and extract it into an isolated recovery location. Review configuration and persistent data before starting containers.",
-            "Start dependencies before application services. Confirm container health, application reachability, and expected persistent data before returning the site to normal operation."
-          ]
-        },
-        {
-          "heading": "Close the recovery",
-          "paragraphs": [
-            "Document the archive used, the verification result, and any deviations from the expected sequence. Run a fresh protected backup only after the recovered service is known to be correct."
-          ]
-        }
-      ]
+      "summary": "This operational recovery procedure is being developed.",
+      "sections": [{
+        "heading": "Recovery Center",
+        "paragraphs": [
+          "This operational recovery procedure is being developed.",
+          "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."
+        ]
+      }]
     },
     {
       "id": "verification-chain",
       "title": "Verification Chain",
-      "summary": "How Harbr turns a completed backup into evidence that a restore is ready.",
-      "sections": [
-        {
-          "heading": "Local evidence",
-          "paragraphs": [
-            "Harbr confirms that an archive was created, its checksums were verified, and the archive remained readable. These checks establish that a usable local recovery point exists."
-          ]
-        },
-        {
-          "heading": "Service continuity",
-          "paragraphs": [
-            "The verification chain records whether paused containers restarted successfully and how long they were unavailable. A backup is not treated as healthy when protection leaves the workload in an unhealthy state."
-          ]
-        },
-        {
-          "heading": "Offsite evidence",
-          "paragraphs": [
-            "The chain is complete when the verified archive is synchronized to the configured offsite destination and restore documentation is present. Each check remains visible independently so a partial chain is never presented as complete."
-          ]
-        }
-      ]
+      "summary": "This operational recovery procedure is being developed.",
+      "sections": [{
+        "heading": "Recovery Center",
+        "paragraphs": [
+          "This operational recovery procedure is being developed.",
+          "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."
+        ]
+      }]
     },
     {
       "id": "backup-retention",
       "title": "Backup and Retention Structure",
-      "summary": "How immediate, daily, weekly, and monthly recovery points work together.",
-      "sections": [
-        {
-          "heading": "Immediate recovery",
-          "paragraphs": [
-            "Local archives provide the fastest recovery path. Their short retention window favors speed and recent recovery points while offsite copies protect against loss of the local host."
-          ]
-        },
-        {
-          "heading": "Offsite tiers",
-          "paragraphs": [
-            "Daily archives cover recent operational changes. Weekly archives extend the recovery window with fewer copies, and monthly archives preserve longer-term recovery points. Harbr reports each tier against its configured target rather than treating retention as a single pass-or-fail value."
-          ]
-        },
-        {
-          "heading": "Selection guidance",
-          "paragraphs": [
-            "Prefer the newest verified archive unless the incident requires a point before a known change. When an older archive is selected, Harbr shows only the evidence recorded for that point in time."
-          ]
-        }
-      ]
+      "summary": "This operational recovery procedure is being developed.",
+      "sections": [{
+        "heading": "Recovery Center",
+        "paragraphs": [
+          "This operational recovery procedure is being developed.",
+          "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."
+        ]
+      }]
     },
     {
       "id": "offsite-sync",
       "title": "OneDrive and Offsite Synchronization",
-      "summary": "What synchronization means and how to interpret an incomplete offsite state.",
-      "sections": [
-        {
-          "heading": "Synchronization state",
-          "paragraphs": [
-            "Synchronized means the verified archive completed transfer to the configured OneDrive destination. It does not expose credentials, local paths, remote identifiers, or archive downloads through the Harbr API."
-          ]
-        },
-        {
-          "heading": "When synchronization is incomplete",
-          "paragraphs": [
-            "A verified local archive may still support recovery when offsite synchronization is delayed, but it does not protect against loss of the local host. Harbr lowers or qualifies Restore Confidence so that distinction remains visible."
-          ]
-        },
-        {
-          "heading": "Operational response",
-          "paragraphs": [
-            "Confirm network access and the offsite synchronization service, then allow the existing transfer process to retry. Do not remove the verified local archive while the offsite copy is incomplete."
-          ]
-        }
-      ]
+      "summary": "This operational recovery procedure is being developed.",
+      "sections": [{
+        "heading": "Recovery Center",
+        "paragraphs": [
+          "This operational recovery procedure is being developed.",
+          "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."
+        ]
+      }]
     },
     {
       "id": "confidence-methodology",
       "title": "Confidence Methodology",
-      "summary": "How Harbr communicates restore readiness without hiding incomplete evidence.",
-      "sections": [
-        {
-          "heading": "High confidence",
-          "paragraphs": [
-            "High confidence requires a recent successful backup, a verified and readable local archive, successful container restart, completed offsite synchronization, and available restore documentation."
-          ]
-        },
-        {
-          "heading": "Moderate and low confidence",
-          "paragraphs": [
-            "Moderate confidence indicates that a usable local recovery point exists while freshness or offsite protection needs attention. Low confidence indicates an incomplete, failed, or stale recovery chain that should not be treated as restore-ready."
-          ]
-        },
-        {
-          "heading": "Unknown confidence",
-          "paragraphs": [
-            "Unknown is an explicit data state, not a neutral score. Harbr uses it when the evidence needed to determine recovery readiness is unavailable. Historical views never borrow current evidence to fill an unknown past value."
-          ]
-        }
-      ]
+      "summary": "This operational recovery procedure is being developed.",
+      "sections": [{
+        "heading": "Recovery Center",
+        "paragraphs": [
+          "This operational recovery procedure is being developed.",
+          "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."
+        ]
+      }]
     },
     {
       "id": "host-recovery-prerequisites",
       "title": "Host Recovery Prerequisites",
-      "summary": "What a blank Debian host needs before it can restore and run the Harbr-managed Docker environment.",
-      "sections": [
-        {
-          "heading": "Curated recovery model",
-          "paragraphs": [
-            "Harbr maintains recovery requirements in state/recovery/prerequisites.json rather than treating every installed Debian package as authoritative. Each component records its category, purpose, requirement level, installation source, package or command, configuration dependency, verification command, and recovery notes.",
-            "Required components are needed by the documented restore, container, backup, or API publication path. Recommended components support a preferred recovery path but have an alternative. Optional administrative tools are useful to operators without being required to restore service."
-          ]
-        },
-        {
-          "heading": "Required platform and runtime",
-          "paragraphs": [
-            "A supported Debian base, Bash, core and find utilities, CA certificates, curl, GPG, Docker Engine, the Docker Compose plugin, rclone, jq, archive tools, POSIX ACL tools, and systemd form the required host foundation. Docker packages come from Docker's documented Debian repository; general utilities come from official Debian repositories.",
-            "The live Host Inventory resource reports detected versions and explicit missing or unavailable states for this curated set. Detection is evidence, not an instruction to clone every package from the old host."
-          ]
-        },
-        {
-          "heading": "Useful but not universally required",
-          "paragraphs": [
-            "Git is recommended for cloning and updating the checkout, but an intact trusted repository can instead be restored from protected media. GitHub CLI is optional and is not used by Harbr initialization, API refresh, backup scheduling, or container startup.",
-            "Software availability alone is insufficient. Recovery also requires the documented service units, configuration files, identities, permissions, ACLs, protected archives, and separately recovered credentials."
-          ]
-        }
-      ]
+      "summary": "This operational recovery procedure is being developed.",
+      "sections": [{
+        "heading": "Recovery Center",
+        "paragraphs": [
+          "This operational recovery procedure is being developed.",
+          "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."
+        ]
+      }]
     },
     {
       "id": "blank-debian-bootstrap",
       "title": "Blank Debian Bootstrap Procedure",
-      "summary": "The ordered path from a new Debian installation to a validated Harbr-managed Docker host.",
-      "sections": [
-        {
-          "heading": "1–4: establish the host",
-          "paragraphs": [
-            "1. Install a supported Debian release, configure storage, networking, time, and security updates, then fully update packages. 2. Install the required base utilities from Debian: Bash, coreutils, findutils, CA certificates, curl, GPG, jq, tar/gzip/xz, rclone, and acl. Run scripts/preflight-refresh-host.sh and stop if it reports a missing prerequisite.",
-            "3. Install Docker Engine from Docker's current official Debian repository instructions, including its signing key and repository definition. 4. Install the Docker Compose plugin from that same documented source and verify docker --version, docker compose version, and docker.service."
-          ]
-        },
-        {
-          "heading": "5–8: recover source, data, configuration, and credentials",
-          "paragraphs": [
-            "5. Restore the trusted Harbr checkout to /srv/docker/harbr or clone it with Git when repository access is available. 6. Copy the selected verified backup to an isolated recovery location, verify its recorded checksum, and restore persistent Docker data and application bind-mounted data according to that archive's manifest. Use <verified-backup-archive> and <recovery-location> for environment-specific paths; do not assume pulling images recreates persistent state.",
-            "7. Restore only protected non-secret host configuration whose provenance is known, and recreate environment-specific configuration that is intentionally not backed up. 8. Recover the OneDrive credential through the separate secure credential process, then run scripts/install-rclone-remote.sh so only the required remote is installed in the private writable Harbr runtime location. Secrets, tokens, private keys, repository credentials, and the root rclone configuration must come from secure recovery material, not the Harbr API."
-          ]
-        },
-        {
-          "heading": "9–11: recreate identities, services, and API state",
-          "paragraphs": [
-            "9. Recreate the deployment user, the harbr-api group, deployment-user membership, directory ownership, modes, and group ACLs for backup status and history. 10. Install docker-backup.service, docker-backup.timer, harbr-api-refresh.service, and the repository's docker-backup.service drop-in; then run systemctl daemon-reload. The backup implementation and its root-only configuration must be restored from their separately protected source when they are not part of this repository.",
-            "11. As the deployment user, run HARBR_ROOT=/srv/docker/harbr ./scripts/init-api.sh to create missing live API files from source-controlled bootstrap data. Runtime files under api/v1 and state/.api-build are generated and must not be restored as tracked source."
-          ]
-        },
-        {
-          "heading": "12–15: start and prove recovery readiness",
-          "paragraphs": [
-            "12. Start the restored Compose applications with docker compose only after persistent data and configuration are in place. 13. Validate container health, application reachability, docker.service, docker-backup.timer, and the Harbr API refresh unit. 14. Run plugins/docker/refresh-api.sh as the deployment user, never as root, and run scripts/validate-api-refresh.sh.",
-            "15. Open Harbr, confirm that the live Host Inventory is generated, and review Restore Confidence, Last Verified, Backup Story, retention coverage, offsite synchronization, and verification checks. Do not declare recovery complete while required evidence is unavailable or failed."
-          ]
-        }
-      ]
+      "summary": "This operational recovery procedure is being developed.",
+      "sections": [{
+        "heading": "Recovery Center",
+        "paragraphs": [
+          "This operational recovery procedure is being developed.",
+          "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."
+        ]
+      }]
     },
     {
       "id": "host-configuration-dependencies",
       "title": "Host Configuration Dependencies",
-      "summary": "Non-container files, identities, permissions, services, and runtime paths required after restoration.",
-      "sections": [
-        {
-          "heading": "Configuration and credential boundaries",
-          "paragraphs": [
-            "/etc/harbr/backup-api.conf is recreated from an allowlisted subset of the root backup configuration. Expected root:harbr-api ownership and mode 0640 let the refresh read paths and retention targets without exposing unrelated backup secrets. Verify it with sudo -u chris -g harbr-api test -r /etc/harbr/backup-api.conf; the refresh cannot calculate coverage when it is absent.",
-            "/var/lib/harbr/rclone/rclone.conf is recreated by scripts/install-rclone-remote.sh from secure source credentials. The directory is chris:chris mode 0700 and the file is mode 0600 so rclone can persist OAuth refreshes. Verify that rclone listremotes shows only OneDrive and that rclone lsf succeeds; offsite coverage and synchronization fail when it is missing or read-only. Secret contents are never published."
-          ]
-        },
-        {
-          "heading": "Identities, metadata, and ACLs",
-          "paragraphs": [
-            "The harbr-api group is recreated manually, and the deployment user chris must be a member. Group ACLs grant read/search access to /var/lib/docker-backup and read access to status.json and history.jsonl while root retains ownership. The default ACL and backup service drop-in preserve that access across replacement files. Verify with id chris and getfacl; unreadable existing metadata causes the refresh to stop explicitly.",
-            "The configured backup root must exist with permissions that let the deployment user list timestamped recovery directories. On the current deployment it is chris:chris mode 0755. Archive contents do not need broader recursive exposure merely for inventory or retention counting. Restore the backup root from protected storage, then verify the exact path recorded in backup-api.conf."
-          ]
-        },
-        {
-          "heading": "Services and repository paths",
-          "paragraphs": [
-            "docker-backup.timer schedules the root docker-backup.service. On success, the installed drop-in triggers harbr-api-refresh.service as User=chris with SupplementaryGroups=harbr-api. These unit files are recreated from the repository and the separately protected backup implementation, then verified with systemctl show and systemctl list-timers. Missing units stop automated backups or prevent fresh API publication.",
-            "/srv/docker/harbr is the expected chris-owned repository location. state/sites and api/bootstrap/v1 are source-controlled; api/v1 is live generated output; state/.api-build is temporary generated output. The two runtime directories are chris:chris mode 0755 and published JSON is mode 0644. Run scripts/init-api.sh for first initialization and verify git status remains clean after refresh. Wrong ownership prevents atomic publication and future repository updates."
-          ]
-        },
-        {
-          "heading": "Source, restored, recreated, and generated state",
-          "paragraphs": [
-            "Repository files and curated prerequisites come from source control. Persistent Docker and application data come from verified backup archives. Host identities, ACLs, systemd installation, allowlisted configuration, and the dedicated rclone config are recreated using the documented deployment procedure. Live API documents and temporary build directories are generated after deployment.",
-            "Credentials and other secrets require a separate secure recovery method. Harbr records only presence, safe versions, service states, and scoped identity facts; it never records secret values or sensitive configuration contents."
-          ]
-        }
-      ]
+      "summary": "This operational recovery procedure is being developed.",
+      "sections": [{
+        "heading": "Recovery Center",
+        "paragraphs": [
+          "This operational recovery procedure is being developed.",
+          "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."
+        ]
+      }]
     }
   ]
 }
