@@ -166,12 +166,18 @@ def validate_documentation() -> None:
     reference = load_json(REFERENCE_PATH)
     entries = reference.get("entries", [])
     ids = {entry.get("id") for entry in entries}
+    placeholder_paragraphs = [
+        "This operational recovery procedure is being developed.",
+        "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation.",
+    ]
     require(REQUIRED_GUIDES <= ids, f"Missing guides: {sorted(REQUIRED_GUIDES - ids)}")
     for entry in entries:
         require(entry.get("title") and entry.get("summary"), f"Incomplete guide metadata: {entry.get('id')}")
-        require(entry.get("sections"), f"Guide has no sections: {entry.get('id')}")
-        for section in entry["sections"]:
-            require(section.get("heading") and section.get("paragraphs"), f"Incomplete section in {entry.get('id')}")
+        require(entry.get("summary") == placeholder_paragraphs[0], f"Guide summary is not the Recovery Center placeholder: {entry.get('id')}")
+        require(
+            entry.get("sections") == [{"heading": "Recovery Center", "paragraphs": placeholder_paragraphs}],
+            f"Guide contains content outside the Recovery Center placeholder: {entry.get('id')}",
+        )
 
 
 def validate_recovery_prerequisites() -> None:

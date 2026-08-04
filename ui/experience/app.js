@@ -369,21 +369,27 @@ function renderStructuredValue(value) {
 
 function openReference(item) {
   const dialog = $('#reference-detail');
-  $('#reference-detail-title').textContent = item.title;
-  $('#reference-detail-summary').textContent = item.summary;
-  $('#reference-detail-timestamp').textContent = item.timestamp
+  const title = $('#reference-detail-title');
+  const summary = $('#reference-detail-summary');
+  const timestamp = $('#reference-detail-timestamp');
+  const raw = $('#reference-raw');
+  const eyebrow = dialog.querySelector('.eyebrow');
+  const isDocumentation = item.kind === 'documentation';
+  const placeholder = isDocumentation ? item.data.sections[0] : null;
+
+  title.textContent = placeholder?.heading || item.title;
+  summary.textContent = placeholder?.paragraphs[0] || item.summary;
+  timestamp.textContent = item.timestamp
     ? `Generated or verified ${formatDate(item.timestamp, { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}`
     : 'Generated or verified timestamp unavailable';
+  timestamp.hidden = isDocumentation;
+  raw.hidden = isDocumentation;
+  eyebrow.hidden = isDocumentation;
   const content = $('#reference-detail-content');
   content.replaceChildren();
 
-  if (item.kind === 'documentation') {
-    item.data.sections.forEach(section => {
-      const sectionNode = element('section', 'documentation-section');
-      sectionNode.append(element('h3', '', section.heading));
-      section.paragraphs.forEach(paragraph => sectionNode.append(element('p', '', paragraph)));
-      content.append(sectionNode);
-    });
+  if (isDocumentation) {
+    placeholder.paragraphs.slice(1).forEach(paragraph => content.append(element('p', '', paragraph)));
   } else if (item.data) {
     content.append(renderStructuredValue(item.data));
   } else {
@@ -391,7 +397,7 @@ function openReference(item) {
   }
 
   $('#reference-raw-json').textContent = JSON.stringify(item.data, null, 2) || 'Unavailable';
-  $('#reference-raw').open = false;
+  raw.open = false;
   if (typeof dialog.showModal === 'function') dialog.showModal();
   else dialog.setAttribute('open', '');
 }
@@ -421,7 +427,7 @@ function renderReferences() {
   appState.referenceItems.clear();
 
   const documentationGroup = element('section', 'reference-group');
-  documentationGroup.append(element('h3', '', 'Harbr Guides'));
+  documentationGroup.append(element('h3', '', 'Recovery Center'));
   if (appState.documentation.length) {
     appState.documentation.forEach(entry => {
       documentationGroup.append(createReferenceButton({
@@ -434,7 +440,7 @@ function renderReferences() {
       }));
     });
   } else {
-    documentationGroup.append(element('p', 'data-unavailable', 'First-party documentation is unavailable.'));
+    documentationGroup.append(element('p', 'data-unavailable', 'Recovery procedures are being added to this release.'));
   }
   results.append(documentationGroup);
 
