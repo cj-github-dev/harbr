@@ -9,24 +9,24 @@
 <link rel="stylesheet" href="/styles.css">
 <script src="/app.js" defer></script>
 </head>
-<body>
-<div id="startup" class="startup">
+<body data-season="summer">
+<div id="startup" class="startup" aria-hidden="true">
   <img src="/assets/harbr-mark.svg" alt="">
   <strong>Harbr</strong>
-  <span>Recovery begins with confidence.</span>
+  <span id="startup-tagline">Recovery begins with confidence.</span>
 </div>
 
 <div class="shell">
   <aside class="sidebar">
     <div class="wordmark"><img src="/assets/harbr-mark.svg" alt=""><span>Harbr</span></div>
-    <p>Recovery begins<br>with confidence.</p>
-    <nav>
-      <a class="active" href="#overview">Overview</a>
+    <p id="product-tagline">Recovery begins<br>with confidence.</p>
+    <nav aria-label="Primary">
+      <a class="active" aria-current="page" href="#overview">Overview</a>
       <a href="#story">Backup Story</a>
       <a href="#archives">Archives</a>
       <a href="#reference">Reference Center</a>
     </nav>
-    <div class="sidebar-status"><i></i> All Systems Normal</div>
+    <div class="sidebar-status"><i></i> <span data-system-status>Loading status…</span></div>
   </aside>
 
   <main>
@@ -36,10 +36,10 @@
 
       <header class="mobile-header">
         <div class="wordmark"><img src="/assets/harbr-mark.svg" alt=""><span>Harbr</span></div>
-        <button type="button">LDF</button>
+        <button id="site-id" type="button">—</button>
       </header>
 
-      <div class="status-pill"><i></i> All Systems Normal</div>
+      <div class="status-pill" role="status"><i></i> <span data-system-status>Loading status…</span></div>
 
       <div class="ring-stage">
         <div class="ripple r1"></div>
@@ -52,8 +52,8 @@
           <div class="living-light"></div>
           <div class="ring-copy">
             <span>Restore Confidence</span>
-            <strong id="confidence-label">High</strong>
-            <p>All systems ready</p>
+            <strong id="confidence-label">—</strong>
+            <p id="confidence-message">Loading confidence…</p>
           </div>
         </div>
         <div class="water-ripple w1"></div>
@@ -75,36 +75,35 @@
       <div id="archives" class="archive-strip">
         <h2>Recent Archives</h2>
         <div id="archive-list"></div>
-        <p>28 archives in the last 28 days · All verified</p>
+        <p id="archive-summary">Loading archive history…</p>
       </div>
     </section>
 
     <section id="story" class="summary-panel">
       <h2>Today at a Glance</h2>
       <div class="summary-grid">
-        <article><span>◉</span><strong>System Health</strong><small>All systems normal</small></article>
-        <article><span>◇</span><strong>Backup Status</strong><small>Completed successfully</small></article>
-        <article><span>☁</span><strong>Offsite Sync</strong><small>OneDrive up to date</small></article>
-        <article><span>↻</span><strong>Restore Readiness</strong><small>Ready when needed</small></article>
-        <article><span>▤</span><strong>Reference Guide</strong><small>Always available</small></article>
+        <article><span aria-hidden="true">◉</span><strong>System Health</strong><small id="system-health">Loading…</small></article>
+        <article><span aria-hidden="true">◇</span><strong>Backup Status</strong><small id="backup-status">Loading…</small></article>
+        <article><span aria-hidden="true">☁</span><strong>Offsite Sync</strong><small id="offsite-status">Loading…</small></article>
+        <article><span aria-hidden="true">↻</span><strong>Restore Readiness</strong><small id="restore-status">Loading…</small></article>
+        <article><span aria-hidden="true">▤</span><strong>Protection Coverage</strong><small id="coverage-status">Loading…</small></article>
       </div>
       <blockquote>Confidence is not luck.<br>It is preparation you can trust.</blockquote>
     </section>
 
     <section id="reference" class="reference">
       <h2>Reference Center</h2>
-      <input id="search" type="search" placeholder="Search restore, OneDrive, retention, alerts…">
+      <label class="sr-only" for="search">Search the Reference Center</label>
+      <input id="search" type="search" placeholder="Search published API resources…">
       <div id="results">
-        <article><strong>Restore Guide</strong><span>Recover Harbr-managed Docker infrastructure.</span></article>
-        <article><strong>OneDrive Structure</strong><span>Daily, weekly, and monthly protection.</span></article>
-        <article><strong>Verification Chain</strong><span>How Harbr proves Restore Confidence.</span></article>
+        <article><strong>API Resources</strong><span>Loading published resources…</span></article>
       </div>
     </section>
   </main>
 </div>
 
-<nav class="mobile-nav">
-  <a href="#overview">Overview</a>
+<nav class="mobile-nav" aria-label="Primary">
+  <a class="active" aria-current="page" href="#overview">Overview</a>
   <a href="#story">Story</a>
   <a href="#archives">Archives</a>
   <a href="#reference">Reference</a>

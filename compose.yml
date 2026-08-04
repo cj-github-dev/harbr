@@ -7,3 +7,4 @@ services:
       - "8088:80"
     volumes:
       - ./ui/experience:/usr/share/nginx/html:ro
+      - ./api:/usr/share/nginx/html/api:ro
