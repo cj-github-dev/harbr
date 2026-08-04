@@ -1,0 +1,9 @@
+services:
+  harbr-experience:
+    image: nginx:1.27-alpine
+    container_name: harbr-experience
+    restart: unless-stopped
+    ports:
+      - "8088:80"
+    volumes:
+      - ./ui/experience:/usr/share/nginx/html:ro

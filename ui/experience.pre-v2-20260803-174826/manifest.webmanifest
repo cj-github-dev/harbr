@@ -1,0 +1,17 @@
+{
+  "name": "Harbr",
+  "short_name": "Harbr",
+  "description": "Recovery begins with confidence.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f6f1",
+  "theme_color": "#357b5e",
+  "icons": [
+    {
+      "src": "/assets/icons/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

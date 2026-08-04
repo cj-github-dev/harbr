@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07161a">
+<title>Harbr</title>
+<link rel="icon" href="/assets/harbr-mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<div id="startup" class="startup">
+  <img src="/assets/harbr-mark.svg" alt="">
+  <strong>Harbr</strong>
+  <span>Recovery begins with confidence.</span>
+</div>
+
+<div class="shell">
+  <aside class="sidebar">
+    <div class="wordmark"><img src="/assets/harbr-mark.svg" alt=""><span>Harbr</span></div>
+    <p>Recovery begins<br>with confidence.</p>
+    <nav>
+      <a class="active" href="#overview">Overview</a>
+      <a href="#story">Backup Story</a>
+      <a href="#archives">Archives</a>
+      <a href="#reference">Reference Center</a>
+    </nav>
+    <div class="sidebar-status"><i></i> All Systems Normal</div>
+  </aside>
+
+  <main>
+    <section id="overview" class="hero">
+      <div class="photo"></div>
+      <div class="shade"></div>
+
+      <header class="mobile-header">
+        <div class="wordmark"><img src="/assets/harbr-mark.svg" alt=""><span>Harbr</span></div>
+        <button type="button">LDF</button>
+      </header>
+
+      <div class="status-pill"><i></i> All Systems Normal</div>
+
+      <div class="ring-stage">
+        <div class="ripple r1"></div>
+        <div class="ripple r2"></div>
+        <div class="ripple r3"></div>
+        <div class="ripple r4"></div>
+        <div class="ripple r5"></div>
+        <div class="outer-halo"></div>
+        <div class="confidence-ring">
+          <div class="living-light"></div>
+          <div class="ring-copy">
+            <span>Restore Confidence</span>
+            <strong id="confidence-label">High</strong>
+            <p>All systems ready</p>
+          </div>
+        </div>
+        <div class="water-ripple w1"></div>
+        <div class="water-ripple w2"></div>
+        <div class="water-ripple w3"></div>
+      </div>
+
+      <div class="story-card glass">
+        <h2>Backup Story</h2>
+        <p id="story-text"></p>
+        <a href="#story">View full story →</a>
+      </div>
+
+      <div class="verified-card glass">
+        <h2>Last Verified</h2>
+        <div id="checks"></div>
+      </div>
+
+      <div id="archives" class="archive-strip">
+        <h2>Recent Archives</h2>
+        <div id="archive-list"></div>
+        <p>28 archives in the last 28 days · All verified</p>
+      </div>
+    </section>
+
+    <section id="story" class="summary-panel">
+      <h2>Today at a Glance</h2>
+      <div class="summary-grid">
+        <article><span>◉</span><strong>System Health</strong><small>All systems normal</small></article>
+        <article><span>◇</span><strong>Backup Status</strong><small>Completed successfully</small></article>
+        <article><span>☁</span><strong>Offsite Sync</strong><small>OneDrive up to date</small></article>
+        <article><span>↻</span><strong>Restore Readiness</strong><small>Ready when needed</small></article>
+        <article><span>▤</span><strong>Reference Guide</strong><small>Always available</small></article>
+      </div>
+      <blockquote>Confidence is not luck.<br>It is preparation you can trust.</blockquote>
+    </section>
+
+    <section id="reference" class="reference">
+      <h2>Reference Center</h2>
+      <input id="search" type="search" placeholder="Search restore, OneDrive, retention, alerts…">
+      <div id="results">
+        <article><strong>Restore Guide</strong><span>Recover Harbr-managed Docker infrastructure.</span></article>
+        <article><strong>OneDrive Structure</strong><span>Daily, weekly, and monthly protection.</span></article>
+        <article><strong>Verification Chain</strong><span>How Harbr proves Restore Confidence.</span></article>
+      </div>
+    </section>
+  </main>
+</div>
+
+<nav class="mobile-nav">
+  <a href="#overview">Overview</a>
+  <a href="#story">Story</a>
+  <a href="#archives">Archives</a>
+  <a href="#reference">Reference</a>
+</nav>
+</body>
+</html>

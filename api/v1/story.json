@@ -1,0 +1,45 @@
+{
+  "api_version": "v1",
+  "site_id": "LDF",
+  "backup_id": "2026-08-03_13-28-00",
+  "started_at": "2026-08-03T13:28:00-05:00",
+  "completed_at": "2026-08-03T13:30:10-05:00",
+  "steps": [
+    {
+      "id": "containers-paused",
+      "label": "Containers paused",
+      "occurred_at": "2026-08-03T13:28:00-05:00",
+      "status": "complete"
+    },
+    {
+      "id": "archive-created",
+      "label": "Archive created",
+      "occurred_at": null,
+      "status": "complete"
+    },
+    {
+      "id": "integrity-verified",
+      "label": "Integrity verified",
+      "occurred_at": null,
+      "status": "complete"
+    },
+    {
+      "id": "containers-restarted",
+      "label": "Containers restarted",
+      "occurred_at": null,
+      "status": "complete"
+    },
+    {
+      "id": "onedrive-synchronized",
+      "label": "Copied to OneDrive",
+      "occurred_at": "2026-08-03T13:30:10-05:00",
+      "status": "complete"
+    },
+    {
+      "id": "confidence-updated",
+      "label": "Restore Confidence updated",
+      "occurred_at": "2026-08-03T13:30:10-05:00",
+      "status": "complete"
+    }
+  ]
+}

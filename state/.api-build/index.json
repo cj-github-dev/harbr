@@ -1,0 +1,23 @@
+{
+  "api_version": "v1",
+  "product": {
+    "name": "Harbr",
+    "tagline": "Recovery begins with confidence.",
+    "version": "1.0.0-alpha.1"
+  },
+  "sites": [
+    {
+      "site_id": "LDF",
+      "name": "Lac du Flambeau",
+      "edition": "Founder's Edition"
+    }
+  ],
+  "resources": {
+    "site": "/api/v1/site.json",
+    "confidence": "/api/v1/confidence.json",
+    "story": "/api/v1/story.json",
+    "history": "/api/v1/history.json",
+    "coverage": "/api/v1/coverage.json",
+    "system": "/api/v1/system.json"
+  }
+}

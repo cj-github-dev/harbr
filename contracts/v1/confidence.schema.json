@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harbr.nshsystems.com/contracts/v1/confidence.schema.json",
+  "title": "Harbr Restore Confidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "api_version",
+    "site_id",
+    "level",
+    "message",
+    "last_verified_at",
+    "history"
+  ],
+  "properties": {
+    "api_version": {
+      "const": "v1"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "level": {
+      "type": "string",
+      "enum": [
+        "high",
+        "moderate",
+        "low",
+        "unknown"
+      ]
+    },
+    "message": {
+      "type": "string"
+    },
+    "last_verified_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "history": {
+      "type": "array",
+      "maxItems": 7,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "date",
+          "level"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "high",
+              "moderate",
+              "low",
+              "unknown"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

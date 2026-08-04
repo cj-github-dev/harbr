@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harbr.nshsystems.com/contracts/v1/story.schema.json",
+  "title": "Harbr Backup Story",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "api_version",
+    "site_id",
+    "backup_id",
+    "started_at",
+    "completed_at",
+    "steps"
+  ],
+  "properties": {
+    "api_version": {
+      "const": "v1"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "backup_id": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "occurred_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "warning",
+              "failed",
+              "pending"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

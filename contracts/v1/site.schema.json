@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harbr.nshsystems.com/contracts/v1/site.schema.json",
+  "title": "Harbr Site",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "api_version",
+    "site_id",
+    "site_name",
+    "display_name",
+    "edition",
+    "first_protected_at",
+    "season"
+  ],
+  "properties": {
+    "api_version": {
+      "const": "v1"
+    },
+    "site_id": {
+      "type": "string",
+      "pattern": "^[A-Z0-9_-]+$"
+    },
+    "site_name": {
+      "type": "string"
+    },
+    "display_name": {
+      "type": "string"
+    },
+    "edition": {
+      "type": "string"
+    },
+    "first_protected_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "season": {
+      "type": "string",
+      "enum": [
+        "spring",
+        "summer",
+        "autumn",
+        "winter"
+      ]
+    }
+  }
+}

@@ -1,0 +1,9 @@
+services:
+  harbr-ring-lab:
+    image: nginx:1.27-alpine
+    container_name: harbr-ring-lab
+    restart: unless-stopped
+    ports:
+      - "8089:80"
+    volumes:
+      - ./ui/ring-lab:/usr/share/nginx/html:ro

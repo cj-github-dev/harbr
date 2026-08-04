@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+<title id="title">Harbr Mark</title>
+<desc id="desc">A circular confidence ring containing a calm Northwoods shoreline and pine trees.</desc>
+<defs>
+  <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#69ad8a"/>
+    <stop offset="0.52" stop-color="#2f7659"/>
+    <stop offset="1" stop-color="#183f33"/>
+  </linearGradient>
+</defs>
+<circle cx="128" cy="128" r="103" fill="none" stroke="url(#ring)" stroke-width="13"/>
+<path d="M48 157 C76 151 99 154 125 158 C153 162 180 158 207 151" fill="none" stroke="#254f40" stroke-width="5" stroke-linecap="round"/>
+<path d="M56 171 C86 168 106 170 128 173 C153 176 179 171 199 167" fill="none" stroke="#4f8b70" stroke-width="3" stroke-linecap="round" opacity=".72"/>
+<g fill="#254f40">
+  <path d="M81 145 l14-29 14 29h-9l12 19H78l12-19z"/>
+  <rect x="93" y="157" width="5" height="17" rx="2"/>
+  <path d="M118 151 l12-25 12 25h-8l10 16h-28l10-16z"/>
+  <rect x="128" y="160" width="4" height="14" rx="2"/>
+  <path d="M151 147 l15-32 15 32h-10l12 19h-34l12-19z"/>
+  <rect x="164" y="158" width="5" height="16" rx="2"/>
+</g>
+</svg>

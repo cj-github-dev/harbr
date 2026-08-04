@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en" data-season="summer">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f7f5e8">
+  <meta name="description" content="Harbr — Recovery begins with confidence.">
+  <title>Harbr</title>
+  <link rel="icon" href="/assets/icons/harbr-mark.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div id="startup" class="startup" aria-hidden="true">
+    <div class="startup-horizon"></div>
+    <div class="startup-mark-wrap">
+      <div class="startup-ring"></div>
+      <img src="/assets/icons/harbr-mark.svg" alt="">
+    </div>
+    <div class="startup-wordmark">Harbr</div>
+    <div class="startup-tagline">Recovery begins with confidence.</div>
+  </div>
+
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="Harbr home">
+      <img src="/assets/icons/harbr-mark.svg" alt="">
+      <span>Harbr</span>
+    </a>
+    <button id="site-button" class="site-button" type="button" aria-expanded="false">
+      <span class="site-code">LDF</span>
+      <span class="site-name">Lac du Flambeau</span>
+      <span class="site-chevron" aria-hidden="true">⌄</span>
+    </button>
+  </header>
+
+  <div id="site-sheet" class="site-sheet" hidden>
+    <button class="site-option active" type="button">
+      <span>LDF</span><strong>Lac du Flambeau</strong><small>Founder's Edition</small>
+    </button>
+    <button class="site-option" type="button" disabled>
+      <span>LF</span><strong>Lake Forest</strong><small>Future site</small>
+    </button>
+  </div>
+
+  <main id="top">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="season-art" aria-hidden="true"></div>
+      <div class="hero-scrim"></div>
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <p class="eyebrow">Restore Confidence</p>
+          <h1 id="hero-title">Recovery begins<br>with confidence.</h1>
+          <p id="confidence-message" class="hero-message"></p>
+          <dl class="hero-facts">
+            <div><dt>Last verified backup</dt><dd id="last-verified">—</dd></div>
+            <div><dt>OneDrive</dt><dd>Synchronized</dd></div>
+            <div><dt>Next backup</dt><dd>Tomorrow at 10:30 AM</dd></div>
+          </dl>
+        </div>
+
+        <div class="confidence-stage" aria-label="Restore Confidence High">
+          <div id="confidence-ring" class="confidence-ring high">
+            <div class="history-orbit" aria-hidden="true"></div>
+            <div class="living-light" aria-hidden="true"></div>
+            <div class="ring-center">
+              <span class="ring-kicker">Restore Confidence</span>
+              <strong id="confidence-label">High</strong>
+              <span>Verified</span>
+            </div>
+          </div>
+          <button id="confidence-details-button" class="text-button" type="button">
+            View verification chain
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section id="confidence-details" class="verification-panel" hidden>
+      <div class="section-shell">
+        <p class="eyebrow">Verification chain</p>
+        <div class="verification-grid">
+          <div><span>Archive readability</span><strong>Passed</strong></div>
+          <div><span>SHA-256 verification</span><strong>Passed</strong></div>
+          <div><span>Containers restarted</span><strong>5 of 5</strong></div>
+          <div><span>OneDrive copy</span><strong>Verified</strong></div>
+          <div><span>Restore guide</span><strong>Present</strong></div>
+          <div><span>Backup age</span><strong>Current</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="story section-shell" aria-labelledby="story-title">
+      <p class="eyebrow">Today's Backup Story</p>
+      <h2 id="story-title">A quiet chain of proof.</h2>
+      <ol id="story-list" class="story-list"></ol>
+    </section>
+
+    <section class="trends section-shell" aria-labelledby="trends-title">
+      <p class="eyebrow">Confidence History</p>
+      <h2 id="trends-title">The system is steady.</h2>
+      <div class="chart-stack">
+        <figure>
+          <figcaption><span>Backup size</span><strong id="latest-size">—</strong></figcaption>
+          <svg id="size-chart" class="chart" viewBox="0 0 900 220" role="img" aria-label="Backup size trend"></svg>
+        </figure>
+        <figure>
+          <figcaption><span>Backup duration</span><strong id="latest-duration">—</strong></figcaption>
+          <svg id="duration-chart" class="chart" viewBox="0 0 900 220" role="img" aria-label="Backup duration trend"></svg>
+        </figure>
+      </div>
+    </section>
+
+    <section class="coverage section-shell" aria-labelledby="coverage-title">
+      <p class="eyebrow">Protection Coverage</p>
+      <h2 id="coverage-title">Layered recovery, without the noise.</h2>
+      <div id="coverage-list" class="coverage-list"></div>
+    </section>
+
+    <section class="reference section-shell" aria-labelledby="reference-title">
+      <p class="eyebrow">Reference Center</p>
+      <h2 id="reference-title">Answers, when you need them.</h2>
+      <label class="search">
+        <span class="sr-only">Search Harbr Reference Center</span>
+        <input id="reference-search" type="search" placeholder="Search restore procedures, retention, alerts…">
+      </label>
+      <div id="reference-results" class="reference-results" aria-live="polite">
+        <article><strong>Restore Guide</strong><span>Recover Harbr-managed Docker infrastructure.</span></article>
+        <article><strong>Protection Coverage</strong><span>Understand local, daily, weekly, and monthly recovery points.</span></article>
+        <article><strong>OneDrive Synchronization</strong><span>How Harbr verifies off-site protection.</span></article>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div>
+      <strong>Harbr Founder's Edition</strong>
+      <span>LDF • First protected July 26, 2026</span>
+    </div>
+    <div>
+      <span>Read-only recovery status</span>
+      <span>Version 1.0.0-alpha.2</span>
+    </div>
+  </footer>
+
+  <nav class="mobile-nav" aria-label="Mobile navigation">
+    <a href="#top">Overview</a>
+    <a href="#story-title">Story</a>
+    <a href="#trends-title">History</a>
+    <a href="#reference-title">Reference</a>
+  </nav>
+</body>
+</html>

@@ -1,0 +1,38 @@
+{
+  "api_version": "v1",
+  "site_id": "LDF",
+  "tiers": [
+    {
+      "id": "immediate",
+      "label": "Immediate Recovery",
+      "location": "Local",
+      "current": 3,
+      "target": 3,
+      "state": "complete"
+    },
+    {
+      "id": "short-term",
+      "label": "Short-Term Recovery",
+      "location": "OneDrive Daily",
+      "current": 1,
+      "target": 7,
+      "state": "building"
+    },
+    {
+      "id": "mid-term",
+      "label": "Mid-Term Recovery",
+      "location": "OneDrive Weekly",
+      "current": 0,
+      "target": 4,
+      "state": "building"
+    },
+    {
+      "id": "long-term",
+      "label": "Long-Term Recovery",
+      "location": "OneDrive Monthly",
+      "current": 0,
+      "target": 12,
+      "state": "building"
+    }
+  ]
+}

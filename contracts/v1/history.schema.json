@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harbr.nshsystems.com/contracts/v1/history.schema.json",
+  "title": "Harbr Confidence History",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "api_version",
+    "site_id",
+    "runs"
+  ],
+  "properties": {
+    "api_version": {
+      "const": "v1"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "runs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "backup_id",
+          "completed_at",
+          "level",
+          "archive_size_bytes",
+          "duration_seconds",
+          "container_downtime_seconds"
+        ],
+        "properties": {
+          "backup_id": {
+            "type": "string"
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "high",
+              "moderate",
+              "low",
+              "unknown"
+            ]
+          },
+          "archive_size_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "container_downtime_seconds": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

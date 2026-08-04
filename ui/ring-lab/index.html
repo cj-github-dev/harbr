@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Harbr Confidence Ring Lab</title>
+<link rel="stylesheet" href="/styles.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header>
+  <div class="brand"><img src="/assets/harbr-mark.svg" alt=""><span>Harbr</span></div>
+  <div class="title">Confidence Ring Lab <small>v1.0</small></div>
+  <button id="toggle-controls" type="button">Hide controls</button>
+</header>
+
+<main>
+  <section class="stage">
+    <div class="photo"></div>
+    <div class="shade"></div>
+
+    <div class="ring-scene">
+      <div class="aura"></div>
+      <div class="ripple ripple-1"></div>
+      <div class="ripple ripple-2"></div>
+      <div class="ripple ripple-3"></div>
+      <div class="ripple ripple-4"></div>
+
+      <div class="ring-shell">
+        <div class="ring-metal"></div>
+        <div class="living-light"></div>
+      </div>
+
+      <div class="water water-1"></div>
+      <div class="water water-2"></div>
+      <div class="water water-3"></div>
+
+      <div class="label">
+        <span>Restore Confidence</span>
+        <strong>High</strong>
+        <p>All systems ready</p>
+      </div>
+    </div>
+  </section>
+
+  <aside id="controls">
+    <div class="controls-head">
+      <strong>Ring controls</strong>
+      <button id="reset" type="button">Reset</button>
+    </div>
+
+    <label>Breathing amplitude <output id="breathAmpOut"></output>
+      <input id="breathAmp" type="range" min="0.5" max="6" step="0.1">
+    </label>
+    <label>Breathing period <output id="breathPeriodOut"></output>
+      <input id="breathPeriod" type="range" min="3" max="14" step="0.1">
+    </label>
+    <label>Living-light period <output id="lightPeriodOut"></output>
+      <input id="lightPeriod" type="range" min="8" max="45" step="0.5">
+    </label>
+    <label>Aura radius <output id="auraRadiusOut"></output>
+      <input id="auraRadius" type="range" min="20" max="150" step="1">
+    </label>
+    <label>Aura intensity <output id="auraIntensityOut"></output>
+      <input id="auraIntensity" type="range" min="0.05" max="1" step="0.01">
+    </label>
+    <label>Ripple period <output id="ripplePeriodOut"></output>
+      <input id="ripplePeriod" type="range" min="4" max="18" step="0.1">
+    </label>
+    <label>Ripple opacity <output id="rippleOpacityOut"></output>
+      <input id="rippleOpacity" type="range" min="0.05" max="0.9" step="0.01">
+    </label>
+    <label>Ripple scale <output id="rippleScaleOut"></output>
+      <input id="rippleScale" type="range" min="1.2" max="2.5" step="0.05">
+    </label>
+    <label>Buoyancy amount <output id="buoyancyAmountOut"></output>
+      <input id="buoyancyAmount" type="range" min="0" max="12" step="0.5">
+    </label>
+    <label>Buoyancy period <output id="buoyancyPeriodOut"></output>
+      <input id="buoyancyPeriod" type="range" min="5" max="24" step="0.2">
+    </label>
+    <label>Bloom intensity <output id="bloomOut"></output>
+      <input id="bloom" type="range" min="0" max="1" step="0.01">
+    </label>
+
+    <div class="presets">
+      <button data-preset="subtle" type="button">Subtle</button>
+      <button data-preset="balanced" class="active" type="button">Balanced</button>
+      <button data-preset="pronounced" type="button">Pronounced</button>
+      <button data-preset="dramatic" type="button">Dramatic</button>
+    </div>
+  </aside>
+</main>
+</body>
+</html>

@@ -1,0 +1,151 @@
+{
+  "product": {
+    "name": "Harbr",
+    "tagline": "Recovery begins with confidence.",
+    "version": "1.0.0-alpha.2"
+  },
+  "site": {
+    "site_id": "LDF",
+    "site_name": "Lac du Flambeau",
+    "edition": "Founder's Edition",
+    "season": "summer"
+  },
+  "confidence": {
+    "level": "high",
+    "label": "High",
+    "message": "Everything required for a successful restore has been verified.",
+    "last_verified_at": "2026-08-03T13:30:10-05:00",
+    "history": [
+      {
+        "date": "2026-07-28",
+        "level": "high"
+      },
+      {
+        "date": "2026-07-29",
+        "level": "high"
+      },
+      {
+        "date": "2026-07-30",
+        "level": "high"
+      },
+      {
+        "date": "2026-07-31",
+        "level": "high"
+      },
+      {
+        "date": "2026-08-01",
+        "level": "high"
+      },
+      {
+        "date": "2026-08-02",
+        "level": "high"
+      },
+      {
+        "date": "2026-08-03",
+        "level": "high"
+      }
+    ]
+  },
+  "story": [
+    {
+      "label": "Containers paused",
+      "time": "10:30",
+      "status": "complete"
+    },
+    {
+      "label": "Archive created",
+      "time": "10:30",
+      "status": "complete"
+    },
+    {
+      "label": "Integrity verified",
+      "time": "10:30",
+      "status": "complete"
+    },
+    {
+      "label": "Containers restarted",
+      "time": "10:31",
+      "status": "complete"
+    },
+    {
+      "label": "Copied to OneDrive",
+      "time": "10:31",
+      "status": "complete"
+    },
+    {
+      "label": "Restore Confidence updated",
+      "time": "10:31",
+      "status": "complete"
+    }
+  ],
+  "coverage": [
+    {
+      "label": "Immediate Recovery",
+      "detail": "3 local copies",
+      "current": 3,
+      "target": 3
+    },
+    {
+      "label": "Short-Term Recovery",
+      "detail": "7 daily copies",
+      "current": 7,
+      "target": 7
+    },
+    {
+      "label": "Long-Term Recovery",
+      "detail": "4 weekly \u2022 2 monthly",
+      "current": 6,
+      "target": 16
+    }
+  ],
+  "history": [
+    {
+      "date": "Jul 27",
+      "size": 608,
+      "duration": 126,
+      "downtime": 17
+    },
+    {
+      "date": "Jul 28",
+      "size": 610,
+      "duration": 127,
+      "downtime": 18
+    },
+    {
+      "date": "Jul 29",
+      "size": 611,
+      "duration": 125,
+      "downtime": 17
+    },
+    {
+      "date": "Jul 30",
+      "size": 612,
+      "duration": 129,
+      "downtime": 18
+    },
+    {
+      "date": "Jul 31",
+      "size": 613,
+      "duration": 128,
+      "downtime": 18
+    },
+    {
+      "date": "Aug 1",
+      "size": 614,
+      "duration": 131,
+      "downtime": 19
+    },
+    {
+      "date": "Aug 2",
+      "size": 613,
+      "duration": 128,
+      "downtime": 18
+    },
+    {
+      "date": "Aug 3",
+      "size": 614,
+      "duration": 130,
+      "downtime": 18
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "confidence": "High",
+  "story": "Today's archive completed quietly in 2 minutes 10 seconds. Five containers rested briefly and returned successfully. The archive was verified locally before synchronizing to OneDrive. Restore Confidence remains High.",
+  "facts": [
+    [
+      "Archive verified",
+      "13 minutes ago"
+    ],
+    [
+      "OneDrive synchronized",
+      "11 minutes ago"
+    ],
+    [
+      "Containers healthy",
+      "5 running"
+    ],
+    [
+      "Restore guide",
+      "Ready"
+    ]
+  ],
+  "archives": [
+    "Aug 3",
+    "Aug 2",
+    "Aug 1",
+    "Jul 31",
+    "Jul 30",
+    "Jul 29",
+    "Jul 28"
+  ]
+}
