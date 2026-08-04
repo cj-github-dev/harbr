@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
+API_SOURCE_ROOT = ROOT / "api" / "bootstrap" / "v1"
 HTML_PATH = ROOT / "ui" / "experience" / "index.html"
 APP_PATH = ROOT / "ui" / "experience" / "app.js"
 REFERENCE_PATH = ROOT / "ui" / "experience" / "data" / "reference.json"
@@ -35,7 +36,7 @@ def require(condition: bool, message: str) -> None:
 
 
 def validate_json() -> None:
-    for path in sorted((ROOT / "api" / "v1").glob("*.json")):
+    for path in sorted(API_SOURCE_ROOT.glob("*.json")):
         load_json(path)
     for path in sorted((ROOT / "contracts" / "v1").glob("*.json")):
         load_json(path)
@@ -43,11 +44,11 @@ def validate_json() -> None:
 
 
 def validate_internal_resources() -> None:
-    index = load_json(ROOT / "api" / "v1" / "index.json")
+    index = load_json(API_SOURCE_ROOT / "index.json")
     for name, url in index["resources"].items():
         parsed = urlparse(url)
         require(not parsed.scheme and url.startswith("/api/v1/"), f"{name} is not an internal v1 resource")
-        path = ROOT / url.lstrip("/")
+        path = API_SOURCE_ROOT / Path(url).name
         require(path.is_file(), f"Missing internal resource: {url}")
 
     html = HTML_PATH.read_text(encoding="utf-8")
@@ -93,7 +94,7 @@ def validate_archives() -> None:
     ):
         require(marker in app, f"Archive interaction missing {marker}")
 
-    history = load_json(ROOT / "api" / "v1" / "history.json")
+    history = load_json(API_SOURCE_ROOT / "history.json")
     require(history.get("runs"), "History fixture must contain at least one run")
     for run in history["runs"]:
         snapshot = run.get("snapshot")

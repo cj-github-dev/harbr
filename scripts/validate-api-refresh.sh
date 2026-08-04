@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if (( EUID == 0 )); then
+  echo "Run this validation as the normal Harbr deployment user, not root." >&2
+  exit 1
+fi
+
+for command in git jq find stat mktemp install; do
+  command -v "$command" >/dev/null 2>&1 || {
+    echo "Required command missing: $command" >&2
+    exit 1
+  }
+done
+
+SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TEST_PARENT="$(mktemp -d)"
+TEST_ROOT="$TEST_PARENT/harbr"
+cleanup() {
+  rm -rf -- "$TEST_PARENT"
+}
+trap cleanup EXIT
+
+mkdir -p \
+  "$TEST_ROOT/api/bootstrap/v1" \
+  "$TEST_ROOT/plugins/docker" \
+  "$TEST_ROOT/scripts" \
+  "$TEST_ROOT/state/sites" \
+  "$TEST_ROOT/backups/2026-08-04_10-30-00" \
+  "$TEST_ROOT/stubs"
+
+cp "$SOURCE_ROOT/.gitignore" "$SOURCE_ROOT/VERSION" "$TEST_ROOT/"
+cp "$SOURCE_ROOT/api/bootstrap/v1/"*.json "$TEST_ROOT/api/bootstrap/v1/"
+cp "$SOURCE_ROOT/state/sites/LDF.json" "$TEST_ROOT/state/sites/"
+cp "$SOURCE_ROOT/plugins/docker/refresh-api.sh" "$TEST_ROOT/plugins/docker/"
+cp "$SOURCE_ROOT/scripts/init-api.sh" "$TEST_ROOT/scripts/"
+
+cat > "$TEST_ROOT/backup.conf" <<'EOF'
+BACKUP_ROOT="__BACKUP_ROOT__"
+RCLONE_REMOTE="test"
+RCLONE_ROOT="harbr"
+LOCAL_RETENTION=3
+ONEDRIVE_DAILY_RETENTION=7
+ONEDRIVE_WEEKLY_RETENTION=4
+ONEDRIVE_MONTHLY_RETENTION=12
+EOF
+sed -i "s|__BACKUP_ROOT__|$TEST_ROOT/backups|" "$TEST_ROOT/backup.conf"
+
+cat > "$TEST_ROOT/status.json" <<'EOF'
+{
+  "status": "success",
+  "message": "Validation backup completed.",
+  "completed_at": "2026-08-04T10:32:10-05:00",
+  "started_at": "2026-08-04T10:30:00-05:00",
+  "backup_id": "2026-08-04_10-30-00",
+  "duration_seconds": 130,
+  "container_downtime_seconds": 18,
+  "archive_size_bytes": 643454624,
+  "local_verified": true,
+  "cloud_status": "synchronized"
+}
+EOF
+
+cp "$TEST_ROOT/status.json" "$TEST_ROOT/history.jsonl"
+
+cat > "$TEST_ROOT/stubs/rclone" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+cat > "$TEST_ROOT/stubs/systemctl" <<'EOF'
+#!/usr/bin/env bash
+echo "Unknown"
+EOF
+chmod 0755 "$TEST_ROOT/stubs/rclone" "$TEST_ROOT/stubs/systemctl"
+
+git -C "$TEST_ROOT" init -q
+git -C "$TEST_ROOT" config user.name "Harbr Validation"
+git -C "$TEST_ROOT" config user.email "validation@harbr.invalid"
+git -C "$TEST_ROOT" add .
+git -C "$TEST_ROOT" commit -qm "validation fixture"
+
+HARBR_ROOT="$TEST_ROOT" "$TEST_ROOT/scripts/init-api.sh"
+
+run_refresh() {
+  PATH="$TEST_ROOT/stubs:$PATH" \
+  HARBR_ROOT="$TEST_ROOT" \
+  BACKUP_CONFIG="$TEST_ROOT/backup.conf" \
+  BACKUP_STATUS="$TEST_ROOT/status.json" \
+  BACKUP_HISTORY="$TEST_ROOT/history.jsonl" \
+  SITE_CONFIG="$TEST_ROOT/state/sites/LDF.json" \
+  "$TEST_ROOT/plugins/docker/refresh-api.sh"
+}
+
+run_refresh
+run_refresh
+
+for file in "$TEST_ROOT/api/v1/"*.json; do
+  jq empty "$file"
+  [[ -w "$file" ]] || {
+    echo "Generated file is not writable: $file" >&2
+    exit 1
+  }
+  [[ "$(stat -c '%U' "$file")" == "$(id -un)" ]] || {
+    echo "Generated file has unexpected owner: $file" >&2
+    exit 1
+  }
+done
+
+[[ -w "$TEST_ROOT/api/v1" && -w "$TEST_ROOT/state/.api-build" ]]
+[[ -z "$(git -C "$TEST_ROOT" status --porcelain --untracked-files=no)" ]] || {
+  echo "Refresh modified source-controlled files:" >&2
+  git -C "$TEST_ROOT" status --short >&2
+  exit 1
+}
+
+echo "Harbr API refresh validation passed."

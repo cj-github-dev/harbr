@@ -20,6 +20,62 @@ The Docker Compose service exposes the UI and read-only JSON API together.
 Run `docker compose up -d`, then open `http://localhost:8088`. The experience
 reads live documents from `/api/v1/`; it never inspects the host directly.
 
+## API source and runtime ownership
+
+Harbr keeps source data and generated deployment data in separate locations:
+
+- `api/bootstrap/v1/` contains source-controlled bootstrap/example API
+  documents. These make a fresh clone usable before its first backup refresh.
+- `state/sites/` contains source-controlled site configuration.
+- `api/v1/` contains the active published runtime API. Its JSON files are
+  generated, ignored by Git, and served read-only by Nginx.
+- `state/.api-build/` contains ignored, per-refresh temporary build
+  directories. A successful or failed refresh removes its own build directory.
+
+The refresh must run as the normal deployment user that owns the checkout and
+Harbr runtime files—for example, the `harbr` service account or the existing
+deployment account. It deliberately refuses to run as root. Configure the
+systemd unit with `User=<deployment-user>` and `Group=<deployment-group>`; do
+not call the refresh through unrestricted `sudo` or a root timer.
+
+If an older deployment already has root-owned generated output, repair it once
+before deploying this change:
+
+```bash
+sudo chown -R <deployment-user>:<deployment-group> api/v1 state/.api-build
+sudo find api/v1 state/.api-build -type d -exec chmod 0755 {} +
+sudo find api/v1 -type f -name '*.json' -exec chmod 0644 {} +
+```
+
+This preserves the active published API; it changes only ownership and modes.
+
+### Fresh deployment initialization
+
+After cloning, initialize live API files from the tracked bootstrap documents
+as the deployment user, then start the web service:
+
+```bash
+cd /srv/docker/harbr
+HARBR_ROOT="$PWD" ./scripts/init-api.sh
+docker compose up -d
+```
+
+Initialization validates and atomically copies only missing files, so it never
+overwrites an active published API. The regular Docker adapter refresh later
+generates into a private temporary directory, validates every JSON document,
+and atomically publishes complete files into `api/v1/`.
+
+To verify that normal generation does not dirty the checkout:
+
+```bash
+git status --short
+./scripts/validate-api-refresh.sh
+git status --short
+```
+
+Both status commands should be empty. Run the integration validator as the
+deployment user; it intentionally refuses root execution.
+
 The v4 experience retains Harbr's startup animation, Confidence Ring,
 seasonal landscape, glass surfaces, typography, and responsive navigation.
 
@@ -71,6 +127,12 @@ Run the dependency-free repository validation with:
 ```powershell
 python scripts/validate.py
 node --check ui/experience/app.js
+```
+
+On the Linux deployment host, also run:
+
+```bash
+./scripts/validate-api-refresh.sh
 ```
 
 The repository validator checks JSON parsing, internal resources, startup
