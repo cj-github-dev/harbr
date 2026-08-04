@@ -8,7 +8,43 @@
       "level": "high",
       "archive_size_bytes": 643454624,
       "duration_seconds": 130,
-      "container_downtime_seconds": 18
+      "container_downtime_seconds": 18,
+      "snapshot": {
+        "generated_at": "2026-08-03T13:30:10-05:00",
+        "confidence": {
+          "level": "high",
+          "message": "Everything required for a successful restore has been verified.",
+          "last_verified_at": "2026-08-03T13:30:10-05:00",
+          "checks": {
+            "local_archive_created": true,
+            "checksums_verified": true,
+            "archive_readable": true,
+            "containers_restarted": true,
+            "onedrive_synchronized": true,
+            "restore_documentation_present": true
+          }
+        },
+        "story": {
+          "started_at": "2026-08-03T13:28:00-05:00",
+          "completed_at": "2026-08-03T13:30:10-05:00",
+          "steps": [
+            { "id": "containers-paused", "label": "Containers paused", "occurred_at": "2026-08-03T13:28:00-05:00", "status": "complete" },
+            { "id": "archive-created", "label": "Archive created", "occurred_at": null, "status": "complete" },
+            { "id": "integrity-verified", "label": "Integrity verified", "occurred_at": null, "status": "complete" },
+            { "id": "containers-restarted", "label": "Containers restarted", "occurred_at": null, "status": "complete" },
+            { "id": "onedrive-synchronized", "label": "Copied to OneDrive", "occurred_at": "2026-08-03T13:30:10-05:00", "status": "complete" },
+            { "id": "confidence-updated", "label": "Restore Confidence updated", "occurred_at": "2026-08-03T13:30:10-05:00", "status": "complete" }
+          ]
+        },
+        "coverage": {
+          "tiers": [
+            { "id": "immediate", "label": "Immediate Recovery", "location": "Local", "current": 3, "target": 3, "state": "complete" },
+            { "id": "short-term", "label": "Short-Term Recovery", "location": "OneDrive Daily", "current": 1, "target": 7, "state": "building" },
+            { "id": "mid-term", "label": "Mid-Term Recovery", "location": "OneDrive Weekly", "current": 0, "target": 4, "state": "building" },
+            { "id": "long-term", "label": "Long-Term Recovery", "location": "OneDrive Monthly", "current": 0, "target": 12, "state": "building" }
+          ]
+        }
+      }
     }
   ]
 }

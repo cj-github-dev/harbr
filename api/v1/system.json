@@ -1,7 +1,7 @@
 {
   "api_version": "v1",
   "product_name": "Harbr",
-  "product_version": "1.0.0-alpha.1",
+  "product_version": "4.1.0-alpha.1",
   "tagline": "Recovery begins with confidence.",
   "site_id": "LDF",
   "read_only": true,

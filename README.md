@@ -23,6 +23,40 @@ reads live documents from `/api/v1/`; it never inspects the host directly.
 The v4 experience retains Harbr's startup animation, Confidence Ring,
 seasonal landscape, glass surfaces, typography, and responsive navigation.
 
+First-party Reference Center guides live in
+`ui/experience/data/reference.json`. The format is intentionally plain JSON:
+each entry has a stable ID, title, summary, and ordered sections containing
+headings and paragraphs. The UI also presents every resource published by the
+API index with a formatted view and raw JSON view.
+
+## Historical snapshots
+
+`/api/v1/history.json` remains backward-compatible and keeps the existing run
+metrics at the top level. A run may additionally include a `snapshot` with the
+confidence evidence, backup story, and protection coverage recorded for that
+point in time. The contract is defined in
+`contracts/v1/history.schema.json`.
+
+The Docker adapter builds confidence and story snapshots from each source
+history record. It attaches current coverage to the newest run because that
+coverage is measured during the same API generation. Older source records do
+not contain retention counts, so their snapshot coverage is explicitly `null`
+instead of borrowing the current value.
+
+## Validation
+
+Run the dependency-free repository validation with:
+
+```powershell
+python scripts/validate.py
+node --check ui/experience/app.js
+```
+
+The repository validator checks JSON parsing, internal resources, startup
+sequence markup, archive interaction hooks, historical snapshots, and the
+required first-party documentation set. JavaScript syntax is checked directly
+by the browser-compatible Node parser without adding a project dependency.
+
 ## Architecture
 
 Harbr is divided into four layers:

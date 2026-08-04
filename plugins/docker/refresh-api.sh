@@ -265,7 +265,48 @@ jq -n \
              end),
           archive_size_bytes: (.archive_size_bytes // 0),
           duration_seconds: (.duration_seconds // 0),
-          container_downtime_seconds: (.container_downtime_seconds // 0)
+          container_downtime_seconds: (.container_downtime_seconds // 0),
+          snapshot: {
+            generated_at: .completed_at,
+            confidence: {
+              level:
+                (if .status == "success" and .local_verified == true and .cloud_status == "synchronized"
+                 then "high"
+                 elif .local_verified == true
+                 then "moderate"
+                 else "low"
+                 end),
+              message:
+                (if .status == "success" and .local_verified == true and .cloud_status == "synchronized"
+                 then "Everything required for a successful restore was verified."
+                 elif .local_verified == true
+                 then "A verified local recovery point was available, but off-site protection required attention."
+                 else "The recovery chain was incomplete and did not provide restore confidence."
+                 end),
+              last_verified_at: (if .local_verified == true then .completed_at else null end),
+              checks: {
+                local_archive_created: (.local_verified // false),
+                checksums_verified: (.local_verified // false),
+                archive_readable: (.local_verified // false),
+                containers_restarted: (.status == "success" or .status == "warning"),
+                onedrive_synchronized: (.cloud_status == "synchronized"),
+                restore_documentation_present: (.local_verified // false)
+              }
+            },
+            story: {
+              started_at: (.started_at // null),
+              completed_at: .completed_at,
+              steps: [
+                {id:"containers-paused", label:"Containers paused", occurred_at:(.started_at // null), status:(if .status == "success" then "complete" elif .status == "failure" or .status == "critical" then "failed" else "warning" end)},
+                {id:"archive-created", label:"Archive created", occurred_at:null, status:(if .status == "success" then "complete" elif .status == "failure" or .status == "critical" then "failed" else "warning" end)},
+                {id:"integrity-verified", label:"Integrity verified", occurred_at:null, status:(if .status == "success" then "complete" elif .status == "failure" or .status == "critical" then "failed" else "warning" end)},
+                {id:"containers-restarted", label:"Containers restarted", occurred_at:null, status:(if .status == "success" then "complete" elif .status == "failure" or .status == "critical" then "failed" else "warning" end)},
+                {id:"onedrive-synchronized", label:"Copied to OneDrive", occurred_at:.completed_at, status:(if .cloud_status == "synchronized" then "complete" else "warning" end)},
+                {id:"confidence-updated", label:"Restore Confidence updated", occurred_at:.completed_at, status:(if .status == "success" then "complete" elif .status == "failure" or .status == "critical" then "failed" else "warning" end)}
+              ]
+            },
+            coverage: null
+          }
         })
     ' "$history_source"
   )" \
@@ -274,6 +315,17 @@ jq -n \
     site_id: $site_id,
     runs: $runs
   }' > "$TMP_DIR/history.json"
+
+# The newest run is generated alongside the current coverage document, so its
+# point-in-time snapshot can include that evidence. Older source records do not
+# contain historical retention counts and intentionally keep coverage as null.
+jq --slurpfile coverage "$TMP_DIR/coverage.json" '
+  if (.runs | length) > 0
+  then .runs[0].snapshot.coverage = {tiers: $coverage[0].tiers}
+  else .
+  end
+' "$TMP_DIR/history.json" > "$TMP_DIR/history-with-coverage.json"
+mv "$TMP_DIR/history-with-coverage.json" "$TMP_DIR/history.json"
 
 next_run="$(systemctl show docker-backup.timer --property=NextElapseUSecRealtime --value 2>/dev/null || true)"
 [[ -n "$next_run" ]] || next_run="Unknown"
