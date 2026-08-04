@@ -81,10 +81,18 @@ def validate_confidence_ring_config() -> None:
 def validate_startup() -> None:
     html = HTML_PATH.read_text(encoding="utf-8")
     app = APP_PATH.read_text(encoding="utf-8")
+    styles = (ROOT / "ui" / "experience" / "styles.css").read_text(encoding="utf-8")
     for marker in ('id="startup-icon"', 'id="startup-wordmark"', 'id="startup-tagline"'):
         require(marker in html, f"Startup markup missing {marker}")
     for marker in ("icon-away", "wordmark-away", "endingStart + 1500"):
         require(marker in app, f"Startup sequence missing {marker}")
+    for marker in (
+        "animation: intro 900ms var(--ease) backwards",
+        "animation: fade 700ms 420ms var(--ease) backwards",
+        "animation: fade 700ms 820ms var(--ease) backwards",
+        "transition: opacity 650ms var(--ease)",
+    ):
+        require(marker in styles, f"Startup fade treatment missing {marker}")
 
 
 def validate_archives() -> None:
@@ -95,8 +103,21 @@ def validate_archives() -> None:
         "selectArchive",
         "renderHistoricalView",
         "Viewing archive from",
+        "transitionArchiveView",
+        "archive-view-fading",
+        "setGlanceStatus",
     ):
         require(marker in app, f"Archive interaction missing {marker}")
+
+    html = HTML_PATH.read_text(encoding="utf-8")
+    for icon_id in (
+        "system-health-icon",
+        "backup-status-icon",
+        "offsite-status-icon",
+        "restore-status-icon",
+        "coverage-status-icon",
+    ):
+        require(f'id="{icon_id}"' in html, f"Semantic glance icon missing {icon_id}")
 
     history = load_json(API_SOURCE_ROOT / "history.json")
     require(history.get("runs"), "History fixture must contain at least one run")

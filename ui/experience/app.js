@@ -29,6 +29,10 @@ const appState = {
   referenceItems: new Map()
 };
 
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+let archiveTransitionTimer;
+let archiveTransitionFinishTimer;
+
 function element(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -83,6 +87,20 @@ function confidenceStatus(level) {
   }[level] || 'Status Unavailable';
 }
 
+function semanticConfidenceStatus(level) {
+  return {
+    high: 'healthy',
+    moderate: 'warning',
+    low: 'failure',
+    unknown: 'unknown'
+  }[level] || 'unknown';
+}
+
+function setGlanceStatus(iconId, status) {
+  const icon = $(`#${iconId}`);
+  if (icon) icon.dataset.status = status;
+}
+
 function appendCheck(label, value) {
   const row = element('div', 'check');
   row.append(element('span', '', label), element('strong', '', value));
@@ -108,14 +126,23 @@ function renderConfidence(confidence) {
   $('#confidence-label').textContent = confidence ? titleCase(level) : 'Unknown';
   $('#confidence-message').textContent = confidence?.message || 'Confidence data unavailable for this archive.';
   $('#system-health').textContent = status;
+  setGlanceStatus('system-health-icon', semanticConfidenceStatus(level));
   $('#offsite-status').textContent = !confidence?.checks
     ? 'Synchronization data unavailable'
     : confidence.checks.onedrive_synchronized
       ? 'OneDrive synchronized'
       : 'Synchronization not verified';
+  setGlanceStatus(
+    'offsite-status-icon',
+    !confidence?.checks ? 'unknown' : confidence.checks.onedrive_synchronized ? 'healthy' : 'failure'
+  );
   $('#restore-status').textContent = confidence?.last_verified_at
     ? `${titleCase(level)} · verified ${formatDate(confidence.last_verified_at, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
     : 'Verification unavailable';
+  setGlanceStatus(
+    'restore-status-icon',
+    confidence?.last_verified_at ? semanticConfidenceStatus(level) : 'unknown'
+  );
   $$('[data-system-status]').forEach(node => { node.textContent = status; });
 
   const checks = $('#checks');
@@ -145,10 +172,12 @@ function renderConfidence(confidence) {
 function renderRunMetrics(run) {
   if (!run) {
     $('#backup-status').textContent = 'Backup history unavailable';
+    setGlanceStatus('backup-status-icon', 'unknown');
     appendCheck('Archive metrics', 'Unavailable');
     return;
   }
   $('#backup-status').textContent = `${titleCase(run.level || 'unknown')} · ${formatDuration(run.duration_seconds)} · ${formatBytes(run.archive_size_bytes)}`;
+  setGlanceStatus('backup-status-icon', semanticConfidenceStatus(run.level || 'unknown'));
   appendCheck('Archive size', formatBytes(run.archive_size_bytes));
   appendCheck('Backup duration', formatDuration(run.duration_seconds));
   appendCheck('Container downtime', formatDuration(run.container_downtime_seconds));
@@ -173,12 +202,22 @@ function renderCoverage(coverage) {
   const tiers = coverage?.tiers || [];
   if (!tiers.length) {
     $('#coverage-status').textContent = 'Historical coverage unavailable';
+    setGlanceStatus('coverage-status-icon', 'unknown');
     return;
   }
   const current = tiers.reduce((sum, tier) => sum + tier.current, 0);
   const target = tiers.reduce((sum, tier) => sum + tier.target, 0);
   const complete = tiers.filter(tier => tier.state === 'complete').length;
   $('#coverage-status').textContent = `${current} of ${target} restore points · ${complete} of ${tiers.length} tiers complete`;
+  const states = tiers.map(tier => tier.state || 'unknown');
+  const coverageStatus = states.includes('failed')
+    ? 'failure'
+    : states.every(state => state === 'complete')
+      ? 'healthy'
+      : states.some(state => state === 'warning' || state === 'building')
+        ? 'warning'
+        : 'unknown';
+  setGlanceStatus('coverage-status-icon', coverageStatus);
 }
 
 function addGenerationCheck(value, historical = false) {
@@ -222,9 +261,34 @@ function renderHistoricalView(run) {
 function selectArchive(backupId) {
   const runs = appState.data.history?.runs || [];
   const position = runs.findIndex(run => run.backup_id === backupId);
-  if (position < 0) return;
-  if (position === 0) renderCurrentView();
-  else renderHistoricalView(runs[position]);
+  if (position < 0 || backupId === appState.selectedBackupId) return;
+  transitionArchiveView(() => {
+    if (position === 0) renderCurrentView();
+    else renderHistoricalView(runs[position]);
+  });
+}
+
+function transitionArchiveView(render) {
+  if (reducedMotion.matches) {
+    render();
+    return;
+  }
+
+  const content = [$('.status-pill'), $('.ring-stage'), $('.story-card'), $('.verified-card'), $('.summary-panel')]
+    .filter(Boolean);
+  const main = $('main');
+  clearTimeout(archiveTransitionTimer);
+  clearTimeout(archiveTransitionFinishTimer);
+  content.forEach(node => node.classList.add('archive-view-content', 'archive-view-fading'));
+  main?.setAttribute('aria-busy', 'true');
+
+  archiveTransitionTimer = setTimeout(() => {
+    render();
+    requestAnimationFrame(() => {
+      content.forEach(node => node.classList.remove('archive-view-fading'));
+      archiveTransitionFinishTimer = setTimeout(() => main?.removeAttribute('aria-busy'), 200);
+    });
+  }, 200);
 }
 
 function updateArchiveSelection() {
