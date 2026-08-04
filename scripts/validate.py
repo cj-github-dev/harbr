@@ -24,8 +24,8 @@ HOST_PREFLIGHT_PATH = ROOT / "scripts" / "preflight-refresh-host.sh"
 PREREQUISITES_PATH = ROOT / "state" / "recovery" / "prerequisites.json"
 INVENTORY_GENERATOR_PATH = ROOT / "plugins" / "docker" / "generate-inventory.sh"
 APPROVED_RING_HASHES = {
-    RING_CONFIG_PATH: "82c98ec70f69468062d73cbb56b3181c0ce645fa94742ba71f041f1476d8bc43",
-    RING_CSS_PATH: "ae2262fbc2c03126da5df61f296e1e6d55b74de00b09d0ba06e89ffb36bfbfe8",
+    RING_CONFIG_PATH: "c78248ebd91194730a5e6ae045970de64321508af8c871b0bc79314871e48d5e",
+    RING_CSS_PATH: "73fab272f1ab3ce8c4c19208e1fc727a0af25ed23ad616b2f9058e8a79fd0399",
 }
 REQUIRED_GUIDES = {
     "restore-guide",
