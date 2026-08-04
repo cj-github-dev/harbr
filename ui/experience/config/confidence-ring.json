@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "name": "Approved Confidence Ring Configuration",
+  "source": "Harbr Confidence Ring Lab v1.0",
+  "approved": true,
+  "values": {
+    "breathing_amplitude_percent": 2.8,
+    "breathing_period_seconds": 8.4,
+    "confidence_sweep_period_seconds": 31,
+    "aura_radius_pixels": 85,
+    "aura_intensity": 0.46,
+    "ripple_period_seconds": 18,
+    "ripple_opacity": 0.49,
+    "ripple_scale": 1.35,
+    "buoyancy_amount_pixels": 6,
+    "buoyancy_period_seconds": 24,
+    "bloom_intensity": 0.2
+  }
+}
