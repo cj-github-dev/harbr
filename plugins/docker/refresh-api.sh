@@ -8,7 +8,12 @@ BACKUP_STATUS="${BACKUP_STATUS:-/var/lib/docker-backup/status.json}"
 BACKUP_HISTORY="${BACKUP_HISTORY:-/var/lib/docker-backup/history.jsonl}"
 SITE_CONFIG="${SITE_CONFIG:-${HARBR_ROOT}/state/sites/LDF.json}"
 API_DIR="${HARBR_ROOT}/api/v1"
-TMP_DIR="${HARBR_ROOT}/state/.api-build"
+TMP_ROOT="${HARBR_ROOT}/state/.api-build"
+
+if (( EUID == 0 )); then
+  echo "Refusing to refresh Harbr API as root. Run as the deployment user." >&2
+  exit 1
+fi
 
 require() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -17,7 +22,7 @@ require() {
   }
 }
 
-for cmd in jq find sort date stat rclone systemctl; do
+for cmd in jq find sort date stat rclone systemctl mktemp install mv rm; do
   require "$cmd"
 done
 
@@ -31,11 +36,41 @@ done
   exit 1
 }
 
+for source_file in "$BACKUP_STATUS" "$BACKUP_HISTORY"; do
+  if [[ -e "$source_file" && ! -r "$source_file" ]]; then
+    echo "Harbr source data exists but is not readable by $(id -un): $source_file" >&2
+    exit 1
+  fi
+done
+
 # shellcheck disable=SC1090
 source "$BACKUP_CONFIG"
 
-mkdir -p "$API_DIR" "$TMP_DIR"
-rm -f "$TMP_DIR"/*.json
+[[ -d "$BACKUP_ROOT" && -r "$BACKUP_ROOT" && -x "$BACKUP_ROOT" ]] || {
+  echo "Backup root must be readable and searchable by $(id -un): $BACKUP_ROOT" >&2
+  exit 1
+}
+
+if [[ -n "${RCLONE_CONFIG:-}" && ! -r "$RCLONE_CONFIG" ]]; then
+  echo "Rclone configuration is not readable by $(id -un): $RCLONE_CONFIG" >&2
+  exit 1
+fi
+
+mkdir -p "$API_DIR" "$TMP_ROOT"
+chmod 0755 "$API_DIR" "$TMP_ROOT"
+
+[[ -w "$API_DIR" && -w "$TMP_ROOT" ]] || {
+  echo "Harbr runtime directories must be writable by $(id -un): $API_DIR $TMP_ROOT" >&2
+  exit 1
+}
+
+TMP_DIR="$(mktemp -d "$TMP_ROOT/refresh.XXXXXX")"
+chmod 0700 "$TMP_DIR"
+cleanup() {
+  rm -f -- "$API_DIR"/.*.publish."$$"
+  rm -rf -- "$TMP_DIR"
+}
+trap cleanup EXIT
 
 site_id="$(jq -r '.site_id' "$SITE_CONFIG")"
 site_name="$(jq -r '.site_name' "$SITE_CONFIG")"
@@ -380,10 +415,10 @@ for file in "$TMP_DIR"/*.json; do
 done
 
 for name in site confidence story history coverage system index; do
-  install -m 0644 -o chris -g chris "$TMP_DIR/$name.json" "$API_DIR/$name.json"
+  publish_temp="$API_DIR/.$name.json.publish.$$"
+  install -m 0644 "$TMP_DIR/$name.json" "$publish_temp"
+  mv -f "$publish_temp" "$API_DIR/$name.json"
 done
-
-rm -f "$TMP_DIR/raw-status.json" "$TMP_DIR/history-source.json"
 
 echo "Harbr Docker adapter refresh completed."
 echo "Restore Confidence: $confidence_level"

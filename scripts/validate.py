@@ -10,11 +10,16 @@ from urllib.parse import urlparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
+API_SOURCE_ROOT = ROOT / "api" / "bootstrap" / "v1"
 HTML_PATH = ROOT / "ui" / "experience" / "index.html"
 APP_PATH = ROOT / "ui" / "experience" / "app.js"
 REFERENCE_PATH = ROOT / "ui" / "experience" / "data" / "reference.json"
 RING_CONFIG_PATH = ROOT / "ui" / "experience" / "config" / "confidence-ring.json"
 RING_CSS_PATH = ROOT / "ui" / "experience" / "config" / "confidence-ring.generated.css"
+REFRESH_UNIT_PATH = ROOT / "deploy" / "systemd" / "harbr-api-refresh.service"
+BACKUP_DROP_IN_PATH = ROOT / "deploy" / "systemd" / "docker-backup.service.d" / "harbr-api-refresh.conf"
+RCLONE_INSTALLER_PATH = ROOT / "scripts" / "install-rclone-remote.sh"
+HOST_PREFLIGHT_PATH = ROOT / "scripts" / "preflight-refresh-host.sh"
 REQUIRED_GUIDES = {
     "restore-guide",
     "verification-chain",
@@ -35,7 +40,7 @@ def require(condition: bool, message: str) -> None:
 
 
 def validate_json() -> None:
-    for path in sorted((ROOT / "api" / "v1").glob("*.json")):
+    for path in sorted(API_SOURCE_ROOT.glob("*.json")):
         load_json(path)
     for path in sorted((ROOT / "contracts" / "v1").glob("*.json")):
         load_json(path)
@@ -43,11 +48,11 @@ def validate_json() -> None:
 
 
 def validate_internal_resources() -> None:
-    index = load_json(ROOT / "api" / "v1" / "index.json")
+    index = load_json(API_SOURCE_ROOT / "index.json")
     for name, url in index["resources"].items():
         parsed = urlparse(url)
         require(not parsed.scheme and url.startswith("/api/v1/"), f"{name} is not an internal v1 resource")
-        path = ROOT / url.lstrip("/")
+        path = API_SOURCE_ROOT / Path(url).name
         require(path.is_file(), f"Missing internal resource: {url}")
 
     html = HTML_PATH.read_text(encoding="utf-8")
@@ -93,7 +98,7 @@ def validate_archives() -> None:
     ):
         require(marker in app, f"Archive interaction missing {marker}")
 
-    history = load_json(ROOT / "api" / "v1" / "history.json")
+    history = load_json(API_SOURCE_ROOT / "history.json")
     require(history.get("runs"), "History fixture must contain at least one run")
     for run in history["runs"]:
         snapshot = run.get("snapshot")
@@ -114,6 +119,37 @@ def validate_documentation() -> None:
             require(section.get("heading") and section.get("paragraphs"), f"Incomplete section in {entry.get('id')}")
 
 
+def validate_refresh_deployment() -> None:
+    unit = REFRESH_UNIT_PATH.read_text(encoding="utf-8")
+    drop_in = BACKUP_DROP_IN_PATH.read_text(encoding="utf-8")
+    refresh = (ROOT / "plugins" / "docker" / "refresh-api.sh").read_text(encoding="utf-8")
+    rclone_installer = RCLONE_INSTALLER_PATH.read_text(encoding="utf-8")
+    host_preflight = HOST_PREFLIGHT_PATH.read_text(encoding="utf-8")
+    for marker in (
+        "User=chris",
+        "SupplementaryGroups=harbr-api",
+        "BACKUP_CONFIG=/etc/harbr/backup-api.conf",
+        "RCLONE_CONFIG=/var/lib/harbr/rclone/rclone.conf",
+    ):
+        require(marker in unit, f"Refresh service missing {marker}")
+    require("OnSuccess=harbr-api-refresh.service" in drop_in, "Backup service does not trigger API refresh")
+    require("ExecStartPost=/usr/bin/setfacl" in drop_in, "Backup service does not refresh metadata ACLs")
+    require("g:harbr-api:r" in drop_in, "Backup metadata access must use the Harbr role group")
+    require("EUID == 0" in refresh, "API refresh must refuse root execution")
+    require('source_file in "$BACKUP_STATUS" "$BACKUP_HISTORY"' in refresh, "API refresh lacks source permission checks")
+    for marker in (
+        'DEST_CONFIG="${DEST_CONFIG:-/var/lib/harbr/rclone/rclone.conf}"',
+        'REMOTE_NAME="${REMOTE_NAME:-OneDrive}"',
+        "listremotes",
+        '${#remotes[@]} != 1',
+        '-m 0700 "$destination_dir"',
+        '-m 0600 "$temp_config"',
+    ):
+        require(marker in rclone_installer, f"Dedicated rclone installer missing {marker}")
+    require('command" == "setfacl"' in host_preflight, "Host preflight must explain the missing acl dependency")
+    require("Install the acl package" in host_preflight, "Host preflight lacks acl installation guidance")
+
+
 def main() -> None:
     validate_json()
     validate_internal_resources()
@@ -121,6 +157,7 @@ def main() -> None:
     validate_startup()
     validate_archives()
     validate_documentation()
+    validate_refresh_deployment()
     print("Harbr validation passed")
 
 

@@ -20,6 +20,148 @@ The Docker Compose service exposes the UI and read-only JSON API together.
 Run `docker compose up -d`, then open `http://localhost:8088`. The experience
 reads live documents from `/api/v1/`; it never inspects the host directly.
 
+## API source and runtime ownership
+
+Harbr keeps source data and generated deployment data in separate locations:
+
+- `api/bootstrap/v1/` contains source-controlled bootstrap/example API
+  documents. These make a fresh clone usable before its first backup refresh.
+- `state/sites/` contains source-controlled site configuration.
+- `api/v1/` contains the active published runtime API. Its JSON files are
+  generated, ignored by Git, and served read-only by Nginx.
+- `state/.api-build/` contains ignored, per-refresh temporary build
+  directories. A successful or failed refresh removes its own build directory.
+
+The refresh must run as the normal deployment user that owns the checkout and
+Harbr runtime files—for example, the `harbr` service account or the existing
+deployment account. It deliberately refuses to run as root. Configure the
+systemd unit with `User=<deployment-user>` and `Group=<deployment-group>`; do
+not call the refresh through unrestricted `sudo` or a root timer.
+
+### Deployed refresh launcher and permissions
+
+On `dockerhost`, `docker-backup.timer` schedules
+`docker-backup.service` at 10:30. The service runs
+`/usr/local/sbin/docker-backup.sh` as `root`; that script does not invoke
+`refresh-api.sh`. Keep this root backup job unchanged. A successful backup
+instead starts a separate `harbr-api-refresh.service` through systemd's
+`OnSuccess=` relationship. The refresh runs as the deployment user `chris`,
+so its root refusal does not interrupt either scheduled service.
+
+The refresh reads a sanitized `/etc/harbr/backup-api.conf` instead of the
+root-only `/etc/docker-backup.conf`. It also needs read access to status and
+history metadata, directory-list access to the backup root, and rclone
+credentials that can list the configured OneDrive retention directories. It
+does not need the Docker socket or access to archive contents.
+
+Install the launcher and its permissions as follows:
+
+```bash
+cd /srv/docker/harbr
+./scripts/preflight-refresh-host.sh
+sudo groupadd --force harbr-api
+sudo usermod --append --groups harbr-api chris
+sudo install -d -o root -g harbr-api -m 0750 /etc/harbr
+sudo grep -E '^(BACKUP_ROOT|RCLONE_REMOTE|RCLONE_ROOT|LOCAL_RETENTION|ONEDRIVE_DAILY_RETENTION|ONEDRIVE_WEEKLY_RETENTION|ONEDRIVE_MONTHLY_RETENTION)=' /etc/docker-backup.conf | sudo tee /etc/harbr/backup-api.conf >/dev/null
+sudo chown root:harbr-api /etc/harbr/backup-api.conf
+sudo chmod 0640 /etc/harbr/backup-api.conf
+sudo ./scripts/install-rclone-remote.sh
+sudo setfacl -m g:harbr-api:rx /var/lib/docker-backup
+sudo setfacl -m g:harbr-api:r /var/lib/docker-backup/status.json /var/lib/docker-backup/history.jsonl
+sudo setfacl -d -m g:harbr-api:r-X /var/lib/docker-backup
+sudo install -o root -g root -m 0644 deploy/systemd/harbr-api-refresh.service /etc/systemd/system/harbr-api-refresh.service
+sudo install -d -o root -g root -m 0755 /etc/systemd/system/docker-backup.service.d
+sudo install -o root -g root -m 0644 deploy/systemd/docker-backup.service.d/harbr-api-refresh.conf /etc/systemd/system/docker-backup.service.d/harbr-api-refresh.conf
+sudo systemctl daemon-reload
+```
+
+The preflight exits before installation with an explicit instruction to install
+the `acl` package when `setfacl` is unavailable. The allowlisted backup-config
+extraction keeps the deployed paths and retention
+targets synchronized without exposing unrelated backup secrets. Repeat it when
+those settings change. The rclone installer reads the root-owned configuration,
+extracts only the `[OneDrive]` remote, verifies that no other remote is present,
+and installs the result as `/var/lib/harbr/rclone/rclone.conf`. Its directory is
+owned by `chris:chris` with mode `0700`, and the config is mode `0600`, so the
+service can atomically persist refreshed OAuth tokens without exposing the
+credentials to other users or the metadata-reader group. Run the installer
+again when the source OneDrive credentials are deliberately replaced.
+Unrelated root rclone remotes and credentials are never copied from the private
+source configuration.
+
+The backup root is already `chris:chris 0755`, which is sufficient for counting
+its timestamped child directories; no recursive archive permission change is
+needed. The ACLs allow members of `harbr-api` to read existing and newly created
+metadata while the backup process retains root ownership. The systemd drop-in
+reapplies the file ACL after every backup before the non-root refresh is
+triggered, including when the backup script atomically replaces a metadata
+file.
+
+If an older deployment already has root-owned generated output, repair it once
+before deploying this change:
+
+```bash
+sudo chown -R <deployment-user>:<deployment-group> api/v1 state/.api-build
+sudo find api/v1 state/.api-build -type d -exec chmod 0755 {} +
+sudo find api/v1 -type f -name '*.json' -exec chmod 0644 {} +
+```
+
+This preserves the active published API; it changes only ownership and modes.
+
+Verify the service identity and every required input before relying on the
+next scheduled run:
+
+```bash
+sudo -u chris -g harbr-api test -r /etc/harbr/backup-api.conf
+sudo -u chris -g harbr-api test -r /var/lib/docker-backup/status.json
+sudo -u chris -g harbr-api test -r /var/lib/docker-backup/history.jsonl
+sudo -u chris -g harbr-api test -r /srv/storage/backups/docker
+sudo -u chris -g chris test -w /var/lib/harbr/rclone
+sudo -u chris -g chris test -w /var/lib/harbr/rclone/rclone.conf
+sudo -u chris -g chris env RCLONE_CONFIG=/var/lib/harbr/rclone/rclone.conf rclone listremotes
+sudo -u chris -g chris env RCLONE_CONFIG=/var/lib/harbr/rclone/rclone.conf rclone lsf --dirs-only "OneDrive:Docker Systems/LDF Backup Center/backups/daily"
+sudo stat -c '%U:%G %a %n' /var/lib/harbr/rclone /var/lib/harbr/rclone/rclone.conf
+sudo systemctl start harbr-api-refresh.service
+sudo systemctl show harbr-api-refresh.service -p User -p Group -p Result
+git status --short
+```
+
+The expected service properties are `User=chris`, `Group=chris`, and
+`Result=success`; `rclone listremotes` must print only `OneDrive:`. The `lsf`
+command must complete without a token-save permission error, including when
+OneDrive refreshes its OAuth token. Afterward, the runtime directory and file
+must remain `chris:chris` modes `0700` and `0600`, respectively, and Git status
+must remain empty. Do not enable the oneshot service directly. The backup
+service triggers it after each successful backup, and a failed backup does not
+publish a misleading new API snapshot.
+
+### Fresh deployment initialization
+
+After cloning, initialize live API files from the tracked bootstrap documents
+as the deployment user, then start the web service:
+
+```bash
+cd /srv/docker/harbr
+HARBR_ROOT="$PWD" ./scripts/init-api.sh
+docker compose up -d
+```
+
+Initialization validates and atomically copies only missing files, so it never
+overwrites an active published API. The regular Docker adapter refresh later
+generates into a private temporary directory, validates every JSON document,
+and atomically publishes complete files into `api/v1/`.
+
+To verify that normal generation does not dirty the checkout:
+
+```bash
+git status --short
+./scripts/validate-api-refresh.sh
+git status --short
+```
+
+Both status commands should be empty. Run the integration validator as the
+deployment user; it intentionally refuses root execution.
+
 The v4 experience retains Harbr's startup animation, Confidence Ring,
 seasonal landscape, glass surfaces, typography, and responsive navigation.
 
@@ -71,6 +213,12 @@ Run the dependency-free repository validation with:
 ```powershell
 python scripts/validate.py
 node --check ui/experience/app.js
+```
+
+On the Linux deployment host, also run:
+
+```bash
+./scripts/validate-api-refresh.sh
 ```
 
 The repository validator checks JSON parsing, internal resources, startup
