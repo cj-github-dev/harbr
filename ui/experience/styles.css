@@ -220,10 +220,10 @@ main {
   border-radius: 50%;
   background: radial-gradient(circle at 48% 42%, rgba(14, 48, 48, 0.72), rgba(4, 16, 20, 0.92) 72%);
   box-shadow:
-    0 0 30px rgba(255, 217, 111, 0.3),
+    0 0 30px rgb(255 217 111 / var(--ring-bloom-intensity)),
     0 0 76px rgba(185, 224, 111, 0.1),
     inset 0 0 46px rgba(122, 176, 104, 0.2);
-  animation: buoy 10s var(--ease) infinite;
+  animation: buoy var(--ring-buoyancy-period) var(--ease) infinite;
 }
 
 .confidence-ring::before {
@@ -232,7 +232,7 @@ main {
   content: "";
   border: 2px solid rgba(185, 224, 111, 0.78);
   border-radius: 50%;
-  animation: breathe 6s var(--ease) infinite;
+  animation: breathe var(--ring-breathing-period) var(--ease) infinite;
 }
 
 .outer-halo {
@@ -241,8 +241,8 @@ main {
   height: 370px;
   border: 1px solid rgba(246, 220, 145, 0.46);
   border-radius: 50%;
-  box-shadow: 0 0 52px rgba(244, 204, 102, 0.2);
-  animation: outer-breath 6s var(--ease) infinite;
+  box-shadow: 0 0 var(--ring-aura-radius) rgb(244 204 102 / var(--ring-aura-intensity));
+  animation: outer-breath var(--ring-breathing-period) var(--ease) infinite;
 }
 
 .confidence-sweep {
@@ -251,7 +251,7 @@ main {
   border-radius: 50%;
   background: conic-gradient(from 0deg, transparent 0 40%, rgba(255, 233, 164, 0.95) 52%, rgba(166, 229, 116, 0.95) 61%, transparent 76%);
   mask: radial-gradient(circle, transparent 0 68%, #000 69% 71%, transparent 72%);
-  animation: spin 11s linear infinite;
+  animation: spin var(--confidence-sweep-period) linear infinite;
 }
 
 .ring-copy {
@@ -295,13 +295,13 @@ main {
   border: 1px solid rgba(255, 224, 135, 0.38);
   border-radius: 50%;
   box-shadow: 0 0 14px rgba(255, 211, 104, 0.12);
-  animation: ripple 7.5s var(--ease) infinite;
+  animation: ripple var(--ring-ripple-period) var(--ease) infinite;
 }
 
-.r2 { animation-delay: 1.5s; }
-.r3 { animation-delay: 3s; }
-.r4 { animation-delay: 4.5s; }
-.r5 { animation-delay: 6s; }
+.r2 { animation-delay: var(--ring-ripple-delay-2); }
+.r3 { animation-delay: var(--ring-ripple-delay-3); }
+.r4 { animation-delay: var(--ring-ripple-delay-4); }
+.r5 { animation-delay: var(--ring-ripple-delay-5); }
 
 .water-ripple {
   position: absolute;
@@ -863,8 +863,8 @@ blockquote {
 
 @keyframes ripple {
   0% { opacity: 0; transform: scale(0.72); }
-  12% { opacity: 0.72; }
-  100% { opacity: 0; transform: scale(1.82); }
+  12% { opacity: var(--ring-ripple-opacity); }
+  100% { opacity: 0; transform: scale(var(--ring-ripple-scale)); }
 }
 
 @keyframes water {
@@ -874,19 +874,19 @@ blockquote {
 }
 
 @keyframes breathe {
-  0%, 100% { opacity: 0.58; transform: scale(0.99); filter: drop-shadow(0 0 8px rgba(185, 224, 111, 0.28)); }
-  50% { opacity: 0.92; transform: scale(1.025); filter: drop-shadow(0 0 24px rgba(185, 224, 111, 0.58)); }
+  0%, 100% { opacity: 0.58; transform: scale(calc(1 - var(--ring-breathing-amplitude))); filter: drop-shadow(0 0 8px rgba(185, 224, 111, 0.28)); }
+  50% { opacity: 0.92; transform: scale(calc(1 + var(--ring-breathing-amplitude))); filter: drop-shadow(0 0 24px rgba(185, 224, 111, 0.58)); }
 }
 
 @keyframes outer-breath {
-  0%, 100% { opacity: 0.38; transform: scale(0.975); }
-  50% { opacity: 0.78; transform: scale(1.055); }
+  0%, 100% { opacity: 0.38; transform: scale(calc(1 - var(--ring-breathing-amplitude))); }
+  50% { opacity: 0.78; transform: scale(calc(1 + var(--ring-breathing-amplitude))); }
 }
 
 @keyframes buoy {
   0%, 100% { transform: translate(0, 0) rotate(-0.18deg); }
-  35% { transform: translate(3px, -5px) rotate(0.22deg); }
-  70% { transform: translate(-3px, 3px) rotate(-0.1deg); }
+  35% { transform: translate(var(--ring-buoyancy-half), var(--ring-buoyancy-negative)) rotate(0.22deg); }
+  70% { transform: translate(var(--ring-buoyancy-negative-half), var(--ring-buoyancy-amount)) rotate(-0.1deg); }
 }
 
 @keyframes spin {

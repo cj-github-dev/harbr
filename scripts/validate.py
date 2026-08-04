@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import runpy
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -12,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 HTML_PATH = ROOT / "ui" / "experience" / "index.html"
 APP_PATH = ROOT / "ui" / "experience" / "app.js"
 REFERENCE_PATH = ROOT / "ui" / "experience" / "data" / "reference.json"
+RING_CONFIG_PATH = ROOT / "ui" / "experience" / "config" / "confidence-ring.json"
+RING_CSS_PATH = ROOT / "ui" / "experience" / "config" / "confidence-ring.generated.css"
 REQUIRED_GUIDES = {
     "restore-guide",
     "verification-chain",
@@ -48,10 +51,26 @@ def validate_internal_resources() -> None:
         require(path.is_file(), f"Missing internal resource: {url}")
 
     html = HTML_PATH.read_text(encoding="utf-8")
-    for resource in ("/styles.css", "/app.js", "/assets/harbr-mark.svg"):
+    for resource in ("/config/confidence-ring.generated.css", "/styles.css", "/app.js", "/assets/harbr-mark.svg"):
         require(resource in html, f"Missing HTML resource link: {resource}")
         path = ROOT / "ui" / "experience" / resource.lstrip("/")
         require(path.is_file(), f"Missing UI resource: {resource}")
+
+
+def validate_confidence_ring_config() -> None:
+    config = load_json(RING_CONFIG_PATH)
+    require(config.get("schema_version") == 1, "Unsupported Confidence Ring configuration schema")
+    require(config.get("approved") is True, "Confidence Ring configuration is not approved")
+
+    generator = runpy.run_path(str(ROOT / "scripts" / "generate-confidence-ring-css.py"))
+    mappings = generator["MAPPINGS"]
+    values = config.get("values", {})
+    require(values.keys() == mappings.keys(), "Confidence Ring values and production mapping have drifted")
+    require(generator["render"](config) == RING_CSS_PATH.read_text(encoding="utf-8"), "Generated Confidence Ring CSS is stale")
+
+    styles = (ROOT / "ui" / "experience" / "styles.css").read_text(encoding="utf-8")
+    for _, (variable, _) in mappings.items():
+        require(f"var({variable})" in styles, f"Production ring does not consume {variable}")
 
 
 def validate_startup() -> None:
@@ -98,6 +117,7 @@ def validate_documentation() -> None:
 def main() -> None:
     validate_json()
     validate_internal_resources()
+    validate_confidence_ring_config()
     validate_startup()
     validate_archives()
     validate_documentation()

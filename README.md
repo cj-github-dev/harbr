@@ -23,6 +23,27 @@ reads live documents from `/api/v1/`; it never inspects the host directly.
 The v4 experience retains Harbr's startup animation, Confidence Ring,
 seasonal landscape, glass surfaces, typography, and responsive navigation.
 
+### Confidence Ring configuration
+
+`ui/experience/config/confidence-ring.json` is the authoritative approved
+export from the Confidence Ring Lab. Future visual or motion tuning begins in
+the Lab; after approval, export the complete configuration into that file and
+run `python scripts/generate-confidence-ring-css.py`. The generated
+`confidence-ring.generated.css` maps every exported value to shared production
+CSS custom properties and must not be edited directly. Repository validation
+fails when the export, mapping, and generated CSS drift apart.
+
+The Lab term `living-light` is named **Confidence Sweep** in the product. Its
+rotation period comes directly from the approved export. The production-only
+orbit inset and mask geometry move the sweep outside the central copy so it
+cannot overlap the label, confidence level, or explanation; this is the sole
+approved visual departure from the exported configuration.
+
+All values in the current schema-version-1 export are consumed by the
+production ring. If a future export introduces a value that production cannot
+yet use, preserve it in the JSON and document the reason here before updating
+the explicit generator mapping—never silently discard it or add a preset.
+
 First-party Reference Center guides live in
 `ui/experience/data/reference.json`. The format is intentionally plain JSON:
 each entry has a stable ID, title, summary, and ordered sections containing
@@ -54,8 +75,10 @@ node --check ui/experience/app.js
 
 The repository validator checks JSON parsing, internal resources, startup
 sequence markup, archive interaction hooks, historical snapshots, and the
-required first-party documentation set. JavaScript syntax is checked directly
-by the browser-compatible Node parser without adding a project dependency.
+required first-party documentation set. It also confirms that every Confidence
+Ring export value has exactly one mapping and that the generated CSS is current.
+JavaScript syntax is checked directly by the browser-compatible Node parser
+without adding a project dependency.
 
 ## Architecture
 

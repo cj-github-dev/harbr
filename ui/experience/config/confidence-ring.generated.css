@@ -1,0 +1,21 @@
+/* Generated from config/confidence-ring.json. Do not edit directly. */
+:root {
+  --ring-breathing-amplitude: 0.028;
+  --ring-breathing-period: 8.4s;
+  --confidence-sweep-period: 31s;
+  --ring-aura-radius: 85px;
+  --ring-aura-intensity: 0.46;
+  --ring-ripple-period: 18s;
+  --ring-ripple-opacity: 0.49;
+  --ring-ripple-scale: 1.35;
+  --ring-buoyancy-amount: 6px;
+  --ring-buoyancy-period: 24s;
+  --ring-bloom-intensity: 0.2;
+  --ring-ripple-delay-2: 3.6s;
+  --ring-ripple-delay-3: 7.2s;
+  --ring-ripple-delay-4: 10.8s;
+  --ring-ripple-delay-5: 14.4s;
+  --ring-buoyancy-half: 3px;
+  --ring-buoyancy-negative: -6px;
+  --ring-buoyancy-negative-half: -3px;
+}
