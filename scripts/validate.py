@@ -166,13 +166,47 @@ def validate_documentation() -> None:
     reference = load_json(REFERENCE_PATH)
     entries = reference.get("entries", [])
     ids = {entry.get("id") for entry in entries}
+    host_recovery_id = "host-recovery-prerequisites"
     placeholder_paragraphs = [
         "This operational recovery procedure is being developed.",
         "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation.",
     ]
+    host_recovery_headings = [
+        "1. Install Debian",
+        "2. Configure the expected hostname",
+        "3. Verify network and Internet connectivity",
+        "4. Verify SSH access",
+        "5. Restore and mount the expected storage",
+        "6. Verify that /srv/storage is writable",
+        "7. Install or verify the required host software",
+        "8. Install or verify Docker Engine and Docker Compose",
+        "9. Confirm that the host is ready to restore Harbr",
+        "10. Identify restoring Harbr as the next recovery step",
+    ]
+    step_field_prefixes = (
+        "Required operator action:",
+        "Verification command:",
+        "Expected successful result:",
+        "If verification fails:",
+        "Blocks recovery:",
+    )
     require(REQUIRED_GUIDES <= ids, f"Missing guides: {sorted(REQUIRED_GUIDES - ids)}")
+    require(entries and entries[0].get("id") == host_recovery_id, "Host Recovery must be the first Recovery Center entry")
+    require(len(ids) == len(entries), "Recovery Center entry IDs must be unique")
     for entry in entries:
         require(entry.get("title") and entry.get("summary"), f"Incomplete guide metadata: {entry.get('id')}")
+        if entry.get("id") == host_recovery_id:
+            require(entry.get("title") == "Host Recovery", "Host Recovery has the wrong user-facing title")
+            sections = entry.get("sections", [])
+            require([section.get("heading") for section in sections] == host_recovery_headings, "Host Recovery steps are missing or out of order")
+            for section in sections:
+                paragraphs = section.get("paragraphs", [])
+                require(len(paragraphs) == len(step_field_prefixes), f"Incomplete Host Recovery step: {section.get('heading')}")
+                require(
+                    all(paragraph.startswith(prefix) for paragraph, prefix in zip(paragraphs, step_field_prefixes)),
+                    f"Host Recovery step fields are missing or out of order: {section.get('heading')}",
+                )
+            continue
         require(entry.get("summary") == placeholder_paragraphs[0], f"Guide summary is not the Recovery Center placeholder: {entry.get('id')}")
         require(
             entry.get("sections") == [{"heading": "Recovery Center", "paragraphs": placeholder_paragraphs}],

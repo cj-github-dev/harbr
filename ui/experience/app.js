@@ -376,9 +376,10 @@ function openReference(item) {
   const eyebrow = dialog.querySelector('.eyebrow');
   const isDocumentation = item.kind === 'documentation';
   const placeholder = isDocumentation ? item.data.sections[0] : null;
+  const isPlaceholder = isDocumentation && item.data.sections.length === 1 && placeholder?.heading === 'Recovery Center';
 
-  title.textContent = placeholder?.heading || item.title;
-  summary.textContent = placeholder?.paragraphs[0] || item.summary;
+  title.textContent = isPlaceholder ? placeholder.heading : item.title;
+  summary.textContent = isPlaceholder ? placeholder.paragraphs[0] : item.summary;
   timestamp.textContent = item.timestamp
     ? `Generated or verified ${formatDate(item.timestamp, { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}`
     : 'Generated or verified timestamp unavailable';
@@ -388,8 +389,15 @@ function openReference(item) {
   const content = $('#reference-detail-content');
   content.replaceChildren();
 
-  if (isDocumentation) {
+  if (isPlaceholder) {
     placeholder.paragraphs.slice(1).forEach(paragraph => content.append(element('p', '', paragraph)));
+  } else if (isDocumentation) {
+    item.data.sections.forEach(section => {
+      const sectionNode = element('section', 'documentation-section');
+      sectionNode.append(element('h3', '', section.heading));
+      section.paragraphs.forEach(paragraph => sectionNode.append(element('p', '', paragraph)));
+      content.append(sectionNode);
+    });
   } else if (item.data) {
     content.append(renderStructuredValue(item.data));
   } else {
