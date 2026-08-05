@@ -491,27 +491,29 @@ def validate_documentation() -> None:
                 for marker in ("same shell", "JELLYFIN_COMPOSE_CANDIDATES", "select JELLYFIN_COMPOSE_FILE", "JELLYFIN_SERVICE_CANDIDATES", "select JELLYFIN_SERVICE", "JELLYFIN_RAW_MOUNTS", "Keep this shell open through step 10"):
                     require(marker in locate_step, f"Jellyfin Compose discovery is missing: {marker}")
                 classification_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[1]]["paragraphs"])
-                for marker in ("protected-state", "rebuildable", "external-media", "review-required", "JELLYFIN_MOUNT_REPORT", "JELLYFIN_UNCLASSIFIED"):
+                for marker in ("protected-state", "rebuildable", "external-media", "runtime-support", "JELLYFIN_MOUNT_REPORT", "select classification in protected-state rebuildable external-media runtime-support"):
                     require(marker in classification_step, f"Jellyfin mount classification is missing: {marker}")
-                require("Do not classify every Compose mount as protected" in classification_step, "Jellyfin mounts must not all be treated as protected state")
+                require("JELLYFIN_UNCLASSIFIED" not in classification_step and "no mount remains unresolved or review-required" in classification_step, "Jellyfin ambiguous mounts must have a constrained resolution path")
+                require("do not classify a mount as protected merely because Compose declares it" in classification_step, "Jellyfin mounts must not all be treated as protected state")
                 state_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[2]]["paragraphs"])
-                for marker in ("JELLYFIN_MISSING_STATE", "protected-state", "docker volume inspect", "Missing protected Jellyfin application state", "false"):
+                for marker in ("jellyfin_state_present()", "JELLYFIN_MISSING_STATE", "protected-state", "docker volume inspect", ".Mountpoint", "-mindepth 1 -maxdepth 3 -print -quit", "Missing or empty protected Jellyfin application state", "runtime-support", "JELLYFIN_MISSING_RUNTIME", "false"):
                     require(marker in state_step, f"Jellyfin protected-state blocker is missing: {marker}")
-                require("Do not create empty configuration directories or volumes" in state_step, "Jellyfin Recovery must prohibit clean-state replacement")
+                require("Do not create, initialize, repair, hash, or fully traverse protected state" in state_step, "Jellyfin Recovery must prohibit mutation and unbounded protected-state inspection")
                 media_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[3]]["paragraphs"])
-                for marker in ("JELLYFIN_MEDIA_REPORT", "external-media", "findmnt --noheadings --output TARGET", "-print -quit", "JELLYFIN_MISSING_MEDIA", "separately maintained storage"):
+                for marker in ("JELLYFIN_MEDIA_REPORT", "external-media", "findmnt --noheadings --output TARGET", "-print -quit", "JELLYFIN_MISSING_MEDIA", "JELLYFIN_ROOT_MEDIA_APPROVED", "select root_media_decision", "jellyfin_media_present()", "separately maintained"):
                     require(marker in media_step, f"Jellyfin external-media verification is missing: {marker}")
-                require('test "$media_mount_target" = /' in media_step, "Jellyfin media verification must reject an accidental directory on the root filesystem")
-                require("excluded from the protected Docker application backup" in media_step and "Do not create empty media directories" in media_step, "Jellyfin Recovery must distinguish and protect excluded media")
+                require("/srv/storage deployment, passes automatically" in media_step, "Jellyfin mounted /srv/storage media must pass automatically")
+                require("intentional root-filesystem" in media_step and "protected evidence confirms this exact source" in media_step, "Jellyfin root-filesystem media must require constrained protected evidence")
+                require("excluded from the protected Docker application backup" in media_step and "Do not create directories" in media_step, "Jellyfin Recovery must distinguish and protect excluded media")
                 network_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[4]]["paragraphs"])
                 for marker in ("JELLYFIN_NETWORK_MODE", "host)", "none)", "service:*|container:*)", "'')", "bridge)", "docker network inspect"):
                     require(marker in network_step, f"Jellyfin network-mode handling is missing: {marker}")
                 require('networks // {"default": null}' not in network_step, "Jellyfin Recovery must not fabricate default networks")
                 start_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[5]]["paragraphs"])
                 require(commands.count(" up -d") == 1 and 'docker compose -f "$JELLYFIN_COMPOSE_FILE" up -d' in start_step, "Jellyfin Recovery must contain one scoped startup")
-                for marker in ("JELLYFIN_START_BLOCKERS", "protected-state", "external-media", "JELLYFIN_START_NETWORK_MODE", "docker volume inspect", "docker network inspect", "JELLYFIN_CONTAINER_ID", 'ps -q "$JELLYFIN_SERVICE"'):
+                for marker in ("JELLYFIN_START_BLOCKERS", "protected-state", "external-media", "runtime-support", "jellyfin_state_present", "jellyfin_media_present", "JELLYFIN_START_NETWORK_MODE", "docker volume inspect", "docker network inspect", "JELLYFIN_CONTAINER_ID", 'ps -q "$JELLYFIN_SERVICE"'):
                     require(marker in start_step, f"Jellyfin pre-start recheck is missing: {marker}")
-                require('findmnt --noheadings --output TARGET' in start_step and '!= /' in start_step, "Jellyfin startup must recheck non-root media mounts")
+                require(start_step.index("jellyfin_state_present") < start_step.index(" up -d") and start_step.index("jellyfin_media_present") < start_step.index(" up -d"), "Jellyfin protected state and media evidence must be rechecked before startup")
                 http_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[6]]["paragraphs"])
                 for marker in ("RestartCount", ".State.Health", "JELLYFIN_WEB_PUBLICATION", "PublishedPort", "NetworkSettings.Networks", "System/Info/Public", "JELLYFIN_HTTP_STATUS", '= 200'):
                     require(marker in http_step, f"Jellyfin stability or HTTP verification is missing: {marker}")
@@ -525,7 +527,7 @@ def validate_documentation() -> None:
                 completion_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[9]]["paragraphs"])
                 for marker in ("Jellyfin application state has been restored", "separately maintained media library is available", "Representative playback has been manually confirmed", "Jellyfin recovery is complete"):
                     require(marker in completion_step, f"Jellyfin completion is missing: {marker}")
-                require('findmnt --noheadings --output TARGET' in completion_step and '!= /' in completion_step, "Jellyfin completion must recheck non-root media mounts")
+                require("jellyfin_state_present" in completion_step and "jellyfin_media_present" in completion_step, "Jellyfin completion must reuse corrected state and media verification")
                 require("docker volume create" not in commands and "docker network create" not in commands and "mkdir" not in commands, "Jellyfin verification must not create missing recovery data")
                 require("container name" not in commands and "JELLYFIN_CONTAINER_NAME" not in commands, "Jellyfin Recovery must not use generated container names")
                 require(commands.count("config --format json") == commands.count("config --format json | jq"), "Jellyfin resolved Compose data must be filtered")
