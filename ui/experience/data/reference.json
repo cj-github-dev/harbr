@@ -207,6 +207,113 @@
       ]
     },
     {
+      "id": "docker-platform",
+      "title": "Docker Platform",
+      "summary": "Restore and verify the shared Docker environment required before application recovery can begin.",
+      "sections": [
+        {
+          "heading": "1. Verify Harbr remains operational",
+          "paragraphs": [
+            "Required operator action: Before changing the broader Docker environment, confirm Harbr remains running and ready to guide recovery.",
+            "Verification command: cd /srv/docker/harbr && docker compose ps --status running --services | grep -qx harbr-experience && curl --fail --silent http://localhost:8088/ | grep -q 'id=\"reference\"' && curl --fail --silent http://localhost:8088/api/v1/index.json | jq -e '.product.name == \"Harbr\" and (.resources | length > 0)'",
+            "Expected successful result: The Harbr Experience service is running, the Recovery Center is served, and the API identifies Harbr with published recovery resources.",
+            "If verification fails: Return to Restore Harbr and correct the container, Recovery Center, or API failure before changing the shared Docker platform.",
+            "Blocks recovery: Yes. Harbr must remain available as the recovery console throughout Docker Platform recovery."
+          ]
+        },
+        {
+          "heading": "2. Review the protected Docker inventory",
+          "paragraphs": [
+            "Required operator action: Locate the protected recovery evidence that records expected application stacks, containers, images, networks, and persistent-storage locations. Confirm its provenance and integrity, and use it as the authority rather than currently running Docker state.",
+            "Verification command: read -r -p 'Protected Docker inventory path: ' DOCKER_INVENTORY && test -r \"$DOCKER_INVENTORY\" && stat --format='%n %s bytes' \"$DOCKER_INVENTORY\"",
+            "Expected successful result: The command reports a readable protected inventory path and size, and the operator confirms the evidence records the expected Docker projects, containers, images, networks, and storage locations.",
+            "If verification fails: Check the protected recovery catalog, /srv/storage mount, source path, permissions, and recorded checksum or manifest. Do not substitute docker ps, docker images, or other current runtime output for protected inventory evidence.",
+            "Blocks recovery: Yes. The expected Docker platform cannot be restored safely without authoritative protected inventory evidence."
+          ]
+        },
+        {
+          "heading": "3. Restore the expected Docker directory structure",
+          "paragraphs": [
+            "Required operator action: Restore or recreate the protected project directories under /srv/docker without starting application stacks. Apply the ownership and permissions recorded for the deployment account and each service.",
+            "Verification command: find /srv/docker -mindepth 1 -maxdepth 1 -type d -printf '%u:%g %m %p\\n' | sort",
+            "Expected successful result: The command lists every required project directory with ownership and modes matching the protected inventory; no unrelated application stack has been started.",
+            "If verification fails: Compare the listing with protected evidence, restore missing directories, correct ownership and modes, and confirm the intended storage is mounted before continuing.",
+            "Blocks recovery: Yes. Missing or incorrectly permissioned project directories prevent reliable configuration and Compose validation."
+          ]
+        },
+        {
+          "heading": "4. Restore shared Docker configuration",
+          "paragraphs": [
+            "Required operator action: Restore the protected shared environment files, network definitions, common configuration, daemon configuration, registry access configuration, and service prerequisites required by multiple stacks. Keep secrets in their protected files and never copy secret values into Harbr.",
+            "Verification command: sudo test ! -e /etc/docker/daemon.json -o -r /etc/docker/daemon.json && find /srv/docker -mindepth 2 -maxdepth 3 -type f \\( -name '.env' -o -name 'compose.yml' -o -name 'compose.yaml' -o -name 'docker-compose.yml' -o -name 'docker-compose.yaml' \\) -printf '%u:%g %m %p\\n' | sort",
+            "Expected successful result: Any restored daemon configuration is readable, and the command lists the expected shared and project configuration paths with protected ownership and modes without displaying their contents.",
+            "If verification fails: Compare paths, ownership, and modes with protected recovery material; restore missing configuration through the secure process and validate daemon configuration before restarting Docker. Do not print environment, registry credential, or secret-file contents.",
+            "Blocks recovery: Yes. Required shared configuration and protected credentials must be present and readable by their intended identities."
+          ]
+        },
+        {
+          "heading": "5. Restore required Docker networks",
+          "paragraphs": [
+            "Required operator action: From the protected inventory, restore or recreate each required shared Docker network with its recorded name and scope. Do not infer the expected set solely from running containers.",
+            "Verification command: docker network ls --format '{{.Name}}\\t{{.Scope}}' | sort",
+            "Expected successful result: The listing contains every network required by protected recovery evidence with the expected name and scope; extra or missing networks are documented and resolved before application startup.",
+            "If verification fails: Check Docker Engine, protected network definitions, network names, drivers and scope, then recreate only networks supported by the protected evidence.",
+            "Blocks recovery: Yes. Application recovery must not begin while a required shared network is missing or incorrectly defined."
+          ]
+        },
+        {
+          "heading": "6. Verify Docker storage paths and permissions",
+          "paragraphs": [
+            "Required operator action: For every persistent-storage path recorded in protected evidence, verify the intended mount and test access as the recorded service identity. Repeat the command for each required path and identity; do not start applications while any path is missing, read-only, or incorrectly owned.",
+            "Verification command: read -r -p 'Required storage path: ' STORAGE_PATH && read -r -p 'Intended service user: ' STORAGE_USER && findmnt --target \"$STORAGE_PATH\" && sudo -u \"$STORAGE_USER\" test -r \"$STORAGE_PATH\" && sudo -u \"$STORAGE_USER\" test -w \"$STORAGE_PATH\" && stat --format='%U:%G %a %n' \"$STORAGE_PATH\"",
+            "Expected successful result: Each protected storage path resolves to its intended mount, is readable and writable by the recorded identity, and reports ownership and modes matching recovery evidence.",
+            "If verification fails: Check the mount source, read-only state, filesystem health, space, ownership, group membership, modes, ACLs, and the service identity recorded in protected evidence.",
+            "Blocks recovery: Yes. Missing, read-only, inaccessible, or incorrectly owned persistent storage can corrupt or misdirect application restoration."
+          ]
+        },
+        {
+          "heading": "7. Verify Docker Compose projects can be evaluated",
+          "paragraphs": [
+            "Required operator action: Locate every protected Compose definition under /srv/docker and parse it without starting, creating, or recreating any application service.",
+            "Verification command: find /srv/docker -mindepth 2 -maxdepth 3 -type f \\( -name 'compose.yml' -o -name 'compose.yaml' -o -name 'docker-compose.yml' -o -name 'docker-compose.yaml' \\) -print0 | while IFS= read -r -d '' COMPOSE_FILE; do docker compose -f \"$COMPOSE_FILE\" config --quiet || exit 1; done",
+            "Expected successful result: Every protected Compose definition parses successfully and no application container is started, created, or recreated.",
+            "If verification fails: Identify the failing project and check missing environment files, shared configuration, variable substitution, Compose syntax, referenced paths, and protected secret availability without printing secret values.",
+            "Blocks recovery: Yes. A protected application project is not ready for restoration while its Compose definition cannot be evaluated."
+          ]
+        },
+        {
+          "heading": "8. Compare the protected inventory with the restored platform",
+          "paragraphs": [
+            "Required operator action: Compare protected evidence with the restored project directories, Compose definitions, shared networks, storage paths, and configuration. Record missing items, stale or unavailable evidence, and every item requiring manual verification; do not declare readiness while required discrepancies remain unresolved.",
+            "Verification command: PLATFORM_REPORT=$(mktemp) && { printf '%s\\n' '[project directories]'; find /srv/docker -mindepth 1 -maxdepth 1 -type d -print | sort; printf '%s\\n' '[compose definitions]'; find /srv/docker -mindepth 2 -maxdepth 3 -type f \\( -name 'compose.yml' -o -name 'compose.yaml' -o -name 'docker-compose.yml' -o -name 'docker-compose.yaml' \\) -print | sort; printf '%s\\n' '[docker networks]'; docker network ls --format '{{.Name}}\\t{{.Scope}}' | sort; } > \"$PLATFORM_REPORT\" && printf 'Restored platform report: %s\\n' \"$PLATFORM_REPORT\"",
+            "Expected successful result: The command creates a restored-platform report, and the operator's comparison identifies no unresolved required project directory, Compose definition, shared network, storage path, configuration, stale evidence, or manual-verification blocker.",
+            "If verification fails: Preserve the report, return to the relevant restore step, and explicitly document unavailable or stale protected evidence. Do not treat an incomplete comparison or current Docker state as proof of readiness.",
+            "Blocks recovery: Yes. Every required discrepancy must be resolved or explicitly documented, and unresolved required items continue to block application recovery."
+          ]
+        },
+        {
+          "heading": "9. Confirm the Docker Platform is ready for application recovery",
+          "paragraphs": [
+            "Required operator action: Run the automatic checks, then manually confirm against protected evidence that all required shared networks, storage paths, shared configuration, and Compose projects are present; all comparison blockers are cleared or explicitly documented; and no required manual confirmation remains incomplete. Automatic checks alone do not authorize application recovery.",
+            "Verification command: cd /srv/docker/harbr && docker compose ps --status running --services | grep -qx harbr-experience && systemctl is-active --quiet docker.service && sudo -u chris docker info --format '{{.ServerVersion}}' && docker compose version && find /srv/docker -mindepth 2 -maxdepth 3 -type f \\( -name 'compose.yml' -o -name 'compose.yaml' -o -name 'docker-compose.yml' -o -name 'docker-compose.yaml' \\) -print0 | while IFS= read -r -d '' COMPOSE_FILE; do docker compose -f \"$COMPOSE_FILE\" config --quiet || exit 1; done && printf '%s\\n' 'Automatic checks passed; manual Docker Platform confirmation still required'",
+            "Expected successful result: Harbr remains running, Docker Engine is active, chris can use the daemon, Docker Compose is available, every restored Compose definition parses, and the command explicitly states that manual Docker Platform confirmation remains required. Readiness exists only after the operator completes those manual confirmations.",
+            "If verification fails: Return to the corresponding Harbr, Docker Engine, access, network, storage, configuration, Compose, or comparison step. If automatic checks pass but protected evidence is stale, unavailable, or incomplete, keep the affected item documented as a blocker until manually resolved.",
+            "Blocks recovery: Yes. Application recovery cannot begin until all automatic checks pass and every required manual confirmation or documented blocker is resolved."
+          ]
+        },
+        {
+          "heading": "10. Identify the next application recovery procedure",
+          "paragraphs": [
+            "Required operator action: Review repository-defined recovery metadata and protected recovery evidence for an authoritative application order. No authoritative application recovery order currently exists in the repository, so record that manual operator selection is required and do not fabricate the first application stack.",
+            "Verification command: printf '%s\\n' 'Next Application Recovery Procedure' 'Manual operator selection required: no authoritative application recovery order is defined.'",
+            "Expected successful result: The command states that manual operator selection is required and does not name an application stack that lacks authoritative ordering evidence.",
+            "If verification fails: Recheck protected recovery material for a newly available authoritative order. If none exists, stop before application restoration and obtain an explicit operator decision based on protected evidence.",
+            "Blocks recovery: Yes. Individual application recovery must wait until an operator selects and records the next stack from authoritative protected evidence."
+          ]
+        }
+      ]
+    },
+    {
       "id": "restore-guide",
       "title": "Restore Guide",
       "summary": "This operational recovery procedure is being developed.",

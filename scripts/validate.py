@@ -28,6 +28,7 @@ APPROVED_RING_HASHES = {
     RING_CSS_PATH: "73fab272f1ab3ce8c4c19208e1fc727a0af25ed23ad616b2f9058e8a79fd0399",
 }
 REQUIRED_GUIDES = {
+    "docker-platform",
     "restore-harbr",
     "restore-guide",
     "verification-chain",
@@ -169,6 +170,7 @@ def validate_documentation() -> None:
     ids = {entry.get("id") for entry in entries}
     host_recovery_id = "host-recovery-prerequisites"
     restore_harbr_id = "restore-harbr"
+    docker_platform_id = "docker-platform"
     placeholder_paragraphs = [
         "This operational recovery procedure is being developed.",
         "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation.",
@@ -196,6 +198,18 @@ def validate_documentation() -> None:
         "8. Confirm Harbr is ready to guide recovery",
         "9. Identify the next recovery step",
     ]
+    docker_platform_headings = [
+        "1. Verify Harbr remains operational",
+        "2. Review the protected Docker inventory",
+        "3. Restore the expected Docker directory structure",
+        "4. Restore shared Docker configuration",
+        "5. Restore required Docker networks",
+        "6. Verify Docker storage paths and permissions",
+        "7. Verify Docker Compose projects can be evaluated",
+        "8. Compare the protected inventory with the restored platform",
+        "9. Confirm the Docker Platform is ready for application recovery",
+        "10. Identify the next application recovery procedure",
+    ]
     step_field_prefixes = (
         "Required operator action:",
         "Verification command:",
@@ -206,13 +220,22 @@ def validate_documentation() -> None:
     require(REQUIRED_GUIDES <= ids, f"Missing guides: {sorted(REQUIRED_GUIDES - ids)}")
     require(entries and entries[0].get("id") == host_recovery_id, "Host Recovery must be the first Recovery Center entry")
     require(len(entries) > 1 and entries[1].get("id") == restore_harbr_id, "Restore Harbr must be the second Recovery Center entry")
+    require(len(entries) > 2 and entries[2].get("id") == docker_platform_id, "Docker Platform must be the third Recovery Center entry")
     require(len(ids) == len(entries), "Recovery Center entry IDs must be unique")
     for entry in entries:
         require(entry.get("title") and entry.get("summary"), f"Incomplete guide metadata: {entry.get('id')}")
-        if entry.get("id") in {host_recovery_id, restore_harbr_id}:
+        if entry.get("id") in {host_recovery_id, restore_harbr_id, docker_platform_id}:
             is_host_recovery = entry.get("id") == host_recovery_id
-            expected_title = "Host Recovery" if is_host_recovery else "Restore Harbr"
-            expected_headings = host_recovery_headings if is_host_recovery else restore_harbr_headings
+            is_restore_harbr = entry.get("id") == restore_harbr_id
+            if is_host_recovery:
+                expected_title = "Host Recovery"
+                expected_headings = host_recovery_headings
+            elif is_restore_harbr:
+                expected_title = "Restore Harbr"
+                expected_headings = restore_harbr_headings
+            else:
+                expected_title = "Docker Platform"
+                expected_headings = docker_platform_headings
             require(entry.get("title") == expected_title, f"{expected_title} has the wrong user-facing title")
             sections = entry.get("sections", [])
             require([section.get("heading") for section in sections] == expected_headings, f"{expected_title} steps are missing or out of order")
@@ -235,7 +258,7 @@ def validate_documentation() -> None:
                 require("Automatic checks alone do not authorize restoration" in readiness_step, "Host Recovery must distinguish automatic checks from restore authorization")
                 for material in ("verified backup archive", "trusted Harbr source", "protected configuration", "secure credentials"):
                     require(material in readiness_step, f"Host Recovery manual readiness confirmation is missing: {material}")
-            else:
+            elif is_restore_harbr:
                 require(entry.get("summary") == "Restore Harbr and verify that the recovery console is operational.", "Restore Harbr has the wrong summary")
                 application_step = "\n".join(sections_by_heading[restore_harbr_headings[1]]["paragraphs"])
                 require("/srv/docker/harbr" in application_step and "harbr-experience" in application_step, "Restore Harbr must verify the isolated application location")
@@ -248,6 +271,19 @@ def validate_documentation() -> None:
                     require(marker in guidance_step, f"Restore Harbr guidance-readiness check is missing: {marker}")
                 next_step = "\n".join(sections_by_heading[restore_harbr_headings[8]]["paragraphs"])
                 require("Next Recovery Step" in next_step and "Restore the Docker Platform." in next_step, "Restore Harbr must identify the next recovery step")
+            else:
+                require(entry.get("summary") == "Restore and verify the shared Docker environment required before application recovery can begin.", "Docker Platform has the wrong summary")
+                inventory_step = "\n".join(sections_by_heading[docker_platform_headings[1]]["paragraphs"])
+                require("Do not substitute docker ps" in inventory_step, "Docker Platform must treat protected evidence as authoritative")
+                commands = "\n".join(section["paragraphs"][1] for section in sections)
+                for forbidden_command in ("docker compose up", "docker compose start", "docker start", "docker restart"):
+                    require(forbidden_command not in commands, f"Docker Platform must not start application stacks: {forbidden_command}")
+                readiness_step = "\n".join(sections_by_heading[docker_platform_headings[8]]["paragraphs"])
+                for marker in ("harbr-experience", "systemctl is-active", "sudo -u chris docker info", "config --quiet", "Automatic checks alone do not authorize application recovery"):
+                    require(marker in readiness_step, f"Docker Platform readiness check is missing: {marker}")
+                next_step = "\n".join(sections_by_heading[docker_platform_headings[9]]["paragraphs"])
+                require("no authoritative application recovery order" in next_step.lower(), "Docker Platform must not fabricate an application recovery order")
+                require("Manual operator selection required" in next_step, "Docker Platform must require manual selection without authoritative order metadata")
             continue
         require(entry.get("summary") == placeholder_paragraphs[0], f"Guide summary is not the Recovery Center placeholder: {entry.get('id')}")
         require(
