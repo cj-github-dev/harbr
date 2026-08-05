@@ -332,12 +332,26 @@ def validate_documentation() -> None:
                 for marker in ("select NPM_APP_SERVICE", "select NPM_DB_SERVICE", 'in "${NPM_SERVICES[@]}"', "NPM_MOUNT_REPORT", "docker volume inspect"):
                     require(marker in data_step, f"Nginx Proxy Manager protected-data discovery is missing: {marker}")
                 require(data_step.count('in "${NPM_SERVICES[@]}"') == 2, "Nginx Proxy Manager role selection must be constrained to discovered services")
+                distinct_role_check = 'test "$NPM_APP_SERVICE" != "$NPM_DB_SERVICE"'
+                require(distinct_role_check in data_step, "Nginx Proxy Manager application and database roles must be distinct")
+                require(data_step.index(distinct_role_check) < data_step.index("NPM_MOUNT_REPORT"), "Nginx Proxy Manager duplicate role selection must fail before data or health verification")
+                require("roles must identify distinct services; repeat the constrained selection" in data_step, "Nginx Proxy Manager must explain how to correct duplicate role selection")
+                for marker in ("NPM_MISSING_VOLUMES=()", 'NPM_MISSING_VOLUMES+=("$source")', "Missing required named volumes:", '${#NPM_MISSING_VOLUMES[@]}', "false"):
+                    require(marker in data_step, f"Nginx Proxy Manager missing-volume blocker is incomplete: {marker}")
+                require("Named volume requires restoration before startup" not in data_step, "Nginx Proxy Manager must not handle missing named volumes as warnings")
+                require("Step 5 must not start" in data_step and "every required" in data_step, "Nginx Proxy Manager must explicitly block startup while required volumes are missing")
                 require("NPM_SERVICE_USER" not in commands and "NPM_TLS_USER" not in commands, "Nginx Proxy Manager must not assume container identities are host users")
+                require("docker volume create" not in commands, "Nginx Proxy Manager must never create replacement named volumes")
                 require(commands.count(" up -d") == 1, "Nginx Proxy Manager must contain exactly one application start command")
                 require('docker compose -f "$NPM_COMPOSE_FILE" up -d' in commands, "Nginx Proxy Manager start must be scoped to the selected Compose file")
                 start_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[4]]["paragraphs"])
                 for marker in ('ps -q', "NPM_CONTAINER_IDS", "com.docker.compose.project"):
                     require(marker in start_step, f"Nginx Proxy Manager container discovery is missing: {marker}")
+                require('docker volume inspect "$source"' in start_step, "Nginx Proxy Manager must recheck named volumes immediately before startup")
+                for marker in ("NPM_START_MISSING_VOLUMES=()", 'NPM_START_MISSING_VOLUMES+=("$source")', '${#NPM_START_MISSING_VOLUMES[@]}', "false"):
+                    require(marker in start_step, f"Nginx Proxy Manager pre-start missing-volume blocker is incomplete: {marker}")
+                require(start_step.index('docker volume inspect "$source"') < start_step.index(' up -d'), "Nginx Proxy Manager must block before Compose can create an empty volume")
+                require("startup blocked" in start_step and "Startup must remain blocked" in start_step, "Nginx Proxy Manager startup must remain blocked while a required named volume is absent")
                 for forbidden_identity in ("NPM_APP_CONTAINER", "NPM_DB_CONTAINER"):
                     require(forbidden_identity not in commands, f"Nginx Proxy Manager must not request or depend on generated container identity: {forbidden_identity}")
                 health_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[5]]["paragraphs"])
