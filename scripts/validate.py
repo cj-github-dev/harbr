@@ -31,6 +31,7 @@ REQUIRED_GUIDES = {
     "docker-platform",
     "nginx-proxy-manager",
     "pihole-recovery",
+    "jellyfin-recovery",
     "restore-harbr",
     "restore-guide",
     "verification-chain",
@@ -175,6 +176,7 @@ def validate_documentation() -> None:
     docker_platform_id = "docker-platform"
     nginx_proxy_manager_id = "nginx-proxy-manager"
     pihole_recovery_id = "pihole-recovery"
+    jellyfin_recovery_id = "jellyfin-recovery"
     placeholder_paragraphs = [
         "This operational recovery procedure is being developed.",
         "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation.",
@@ -238,6 +240,18 @@ def validate_documentation() -> None:
         "9. Complete manual validation",
         "10. Confirm Pi-hole recovery is complete",
     ]
+    jellyfin_recovery_headings = [
+        "1. Locate the Jellyfin Compose project",
+        "2. Classify Jellyfin mounts",
+        "3. Verify protected Jellyfin application state",
+        "4. Verify external media storage",
+        "5. Verify required Docker networking",
+        "6. Start the Jellyfin stack",
+        "7. Verify container stability and Jellyfin HTTP service",
+        "8. Verify Jellyfin recognizes restored application state",
+        "9. Complete manual Jellyfin validation",
+        "10. Confirm Jellyfin recovery is complete",
+    ]
     step_field_prefixes = (
         "Required operator action:",
         "Verification command:",
@@ -251,14 +265,16 @@ def validate_documentation() -> None:
     require(len(entries) > 2 and entries[2].get("id") == docker_platform_id, "Docker Platform must be the third Recovery Center entry")
     require(len(entries) > 3 and entries[3].get("id") == nginx_proxy_manager_id, "Nginx Proxy Manager must be the fourth Recovery Center entry")
     require(len(entries) > 4 and entries[4].get("id") == pihole_recovery_id, "Pi-hole Recovery must be the fifth Recovery Center entry")
+    require(len(entries) > 5 and entries[5].get("id") == jellyfin_recovery_id, "Jellyfin Recovery must be the sixth Recovery Center entry")
     require(len(ids) == len(entries), "Recovery Center entry IDs must be unique")
     for entry in entries:
         require(entry.get("title") and entry.get("summary"), f"Incomplete guide metadata: {entry.get('id')}")
-        if entry.get("id") in {host_recovery_id, restore_harbr_id, docker_platform_id, nginx_proxy_manager_id, pihole_recovery_id}:
+        if entry.get("id") in {host_recovery_id, restore_harbr_id, docker_platform_id, nginx_proxy_manager_id, pihole_recovery_id, jellyfin_recovery_id}:
             is_host_recovery = entry.get("id") == host_recovery_id
             is_restore_harbr = entry.get("id") == restore_harbr_id
             is_docker_platform = entry.get("id") == docker_platform_id
             is_nginx_proxy_manager = entry.get("id") == nginx_proxy_manager_id
+            is_pihole_recovery = entry.get("id") == pihole_recovery_id
             if is_host_recovery:
                 expected_title = "Host Recovery"
                 expected_headings = host_recovery_headings
@@ -271,9 +287,12 @@ def validate_documentation() -> None:
             elif is_nginx_proxy_manager:
                 expected_title = "Nginx Proxy Manager"
                 expected_headings = nginx_proxy_manager_headings
-            else:
+            elif is_pihole_recovery:
                 expected_title = "Pi-hole Recovery"
                 expected_headings = pihole_recovery_headings
+            else:
+                expected_title = "Jellyfin Recovery"
+                expected_headings = jellyfin_recovery_headings
             require(entry.get("title") == expected_title, f"{expected_title} has the wrong user-facing title")
             sections = entry.get("sections", [])
             require([section.get("heading") for section in sections] == expected_headings, f"{expected_title} steps are missing or out of order")
@@ -394,7 +413,7 @@ def validate_documentation() -> None:
                 next_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[9]]["paragraphs"])
                 require("no authoritative application recovery order" in next_step.lower(), "Nginx Proxy Manager must not fabricate the next recovery procedure")
                 require("Manual operator selection required" in next_step, "Nginx Proxy Manager must require manual selection without authoritative order metadata")
-            else:
+            elif is_pihole_recovery:
                 require(entry.get("summary") == "Restore Pi-hole and verify that dependable local DNS is operational.", "Pi-hole Recovery has the wrong summary")
                 commands = "\n".join(section["paragraphs"][1] for section in sections)
                 require("read -r -p" not in commands, "Pi-hole Recovery must discover values rather than request free-form input")
@@ -464,6 +483,56 @@ def validate_documentation() -> None:
                 require(commands.count("config --format json") == commands.count("config --format json | jq"), "Pi-hole resolved Compose data must be filtered rather than displayed")
                 for unsafe_output in ("printenv", "Config.Env", "cat .env", "cat /run/secrets", "docker compose config >", "docker compose config |"):
                     require(unsafe_output not in commands, f"Pi-hole Recovery must not display protected content: {unsafe_output}")
+            else:
+                require(entry.get("summary") == "Restore Jellyfin application state and verify its separately maintained media library.", "Jellyfin Recovery has the wrong summary")
+                commands = "\n".join(section["paragraphs"][1] for section in sections)
+                require("read -r -p" not in commands, "Jellyfin Recovery must discover values rather than request free-form input")
+                locate_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[0]]["paragraphs"])
+                for marker in ("same shell", "JELLYFIN_COMPOSE_CANDIDATES", "select JELLYFIN_COMPOSE_FILE", "JELLYFIN_SERVICE_CANDIDATES", "select JELLYFIN_SERVICE", "JELLYFIN_RAW_MOUNTS", "Keep this shell open through step 10"):
+                    require(marker in locate_step, f"Jellyfin Compose discovery is missing: {marker}")
+                classification_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[1]]["paragraphs"])
+                for marker in ("protected-state", "rebuildable", "external-media", "runtime-support", "JELLYFIN_MOUNT_REPORT", "select classification in protected-state rebuildable external-media runtime-support"):
+                    require(marker in classification_step, f"Jellyfin mount classification is missing: {marker}")
+                require("JELLYFIN_UNCLASSIFIED" not in classification_step and "no mount remains unresolved or review-required" in classification_step, "Jellyfin ambiguous mounts must have a constrained resolution path")
+                require("do not classify a mount as protected merely because Compose declares it" in classification_step, "Jellyfin mounts must not all be treated as protected state")
+                state_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[2]]["paragraphs"])
+                for marker in ("jellyfin_state_present()", "JELLYFIN_MISSING_STATE", "protected-state", "docker volume inspect", ".Mountpoint", "-mindepth 1 -maxdepth 3 -print -quit", "Missing or empty protected Jellyfin application state", "runtime-support", "JELLYFIN_MISSING_RUNTIME", "false"):
+                    require(marker in state_step, f"Jellyfin protected-state blocker is missing: {marker}")
+                require("Do not create, initialize, repair, hash, or fully traverse protected state" in state_step, "Jellyfin Recovery must prohibit mutation and unbounded protected-state inspection")
+                media_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[3]]["paragraphs"])
+                for marker in ("JELLYFIN_MEDIA_REPORT", "external-media", "findmnt --noheadings --output TARGET", "-print -quit", "JELLYFIN_MISSING_MEDIA", "JELLYFIN_ROOT_MEDIA_APPROVED", "select root_media_decision", "jellyfin_media_present()", "separately maintained"):
+                    require(marker in media_step, f"Jellyfin external-media verification is missing: {marker}")
+                require("/srv/storage deployment, passes automatically" in media_step, "Jellyfin mounted /srv/storage media must pass automatically")
+                require("intentional root-filesystem" in media_step and "protected evidence confirms this exact source" in media_step, "Jellyfin root-filesystem media must require constrained protected evidence")
+                require("excluded from the protected Docker application backup" in media_step and "Do not create directories" in media_step, "Jellyfin Recovery must distinguish and protect excluded media")
+                network_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[4]]["paragraphs"])
+                for marker in ("JELLYFIN_NETWORK_MODE", "host)", "none)", "service:*|container:*)", "'')", "bridge)", "docker network inspect"):
+                    require(marker in network_step, f"Jellyfin network-mode handling is missing: {marker}")
+                require('networks // {"default": null}' not in network_step, "Jellyfin Recovery must not fabricate default networks")
+                start_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[5]]["paragraphs"])
+                require(commands.count(" up -d") == 1 and 'docker compose -f "$JELLYFIN_COMPOSE_FILE" up -d' in start_step, "Jellyfin Recovery must contain one scoped startup")
+                for marker in ("JELLYFIN_START_BLOCKERS", "protected-state", "external-media", "runtime-support", "jellyfin_state_present", "jellyfin_media_present", "JELLYFIN_START_NETWORK_MODE", "docker volume inspect", "docker network inspect", "JELLYFIN_CONTAINER_ID", 'ps -q "$JELLYFIN_SERVICE"'):
+                    require(marker in start_step, f"Jellyfin pre-start recheck is missing: {marker}")
+                require(start_step.index("jellyfin_state_present") < start_step.index(" up -d") and start_step.index("jellyfin_media_present") < start_step.index(" up -d"), "Jellyfin protected state and media evidence must be rechecked before startup")
+                http_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[6]]["paragraphs"])
+                for marker in ("RestartCount", ".State.Health", "JELLYFIN_WEB_PUBLICATION", "PublishedPort", "NetworkSettings.Networks", "System/Info/Public", "JELLYFIN_HTTP_STATUS", '= 200'):
+                    require(marker in http_step, f"Jellyfin stability or HTTP verification is missing: {marker}")
+                require("arbitrary 404 responses do not pass" in http_step, "Jellyfin HTTP verification must reject 404 responses")
+                restored_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[7]]["paragraphs"])
+                for marker in ("StartupWizardCompleted", "JELLYFIN_PUBLIC_INFO", ".Mounts", "chmod 600", "database", "configuration initialization failure"):
+                    require(marker in restored_step, f"Jellyfin restored-state verification is missing: {marker}")
+                manual_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[8]]["paragraphs"])
+                for marker in ("expected users", "expected libraries", "representative playback", "expected recordings", "proxied access", "hardware transcoding", "scheduled library scans"):
+                    require(marker in manual_step, f"Jellyfin manual validation is missing: {marker}")
+                completion_step = "\n".join(sections_by_heading[jellyfin_recovery_headings[9]]["paragraphs"])
+                for marker in ("Jellyfin application state has been restored", "separately maintained media library is available", "Representative playback has been manually confirmed", "Jellyfin recovery is complete"):
+                    require(marker in completion_step, f"Jellyfin completion is missing: {marker}")
+                require("jellyfin_state_present" in completion_step and "jellyfin_media_present" in completion_step, "Jellyfin completion must reuse corrected state and media verification")
+                require("docker volume create" not in commands and "docker network create" not in commands and "mkdir" not in commands, "Jellyfin verification must not create missing recovery data")
+                require("container name" not in commands and "JELLYFIN_CONTAINER_NAME" not in commands, "Jellyfin Recovery must not use generated container names")
+                require(commands.count("config --format json") == commands.count("config --format json | jq"), "Jellyfin resolved Compose data must be filtered")
+                for unsafe_output in ("printenv", "Config.Env", "cat .env", "cat /run/secrets"):
+                    require(unsafe_output not in commands, f"Jellyfin Recovery must not display protected content: {unsafe_output}")
             continue
         require(entry.get("summary") == placeholder_paragraphs[0], f"Guide summary is not the Recovery Center placeholder: {entry.get('id')}")
         require(
