@@ -314,6 +314,113 @@
       ]
     },
     {
+      "id": "nginx-proxy-manager",
+      "title": "Nginx Proxy Manager",
+      "summary": "Restore Nginx Proxy Manager and verify that reverse proxy services are operational.",
+      "sections": [
+        {
+          "heading": "1. Verify prerequisites",
+          "paragraphs": [
+            "Required operator action: Confirm Host Recovery, Restore Harbr, and Docker Platform are complete with no unresolved blocking item. Automatic checks support but do not replace the operator's completion confirmation.",
+            "Verification command: cd /srv/docker/harbr && docker compose ps --status running --services | grep -qx harbr-experience && curl --fail --silent http://localhost:8088/data/reference.json | jq -e '.entries[0].id == \"host-recovery-prerequisites\" and .entries[1].id == \"restore-harbr\" and .entries[2].id == \"docker-platform\"' && systemctl is-active --quiet docker.service && sudo -u chris docker info --format '{{.ServerVersion}}' && printf '%s\\n' 'Automatic prerequisite checks passed; manual procedure completion confirmation still required'",
+            "Expected successful result: Harbr is running with the first three procedures available, Docker is active and usable by chris, and the command explicitly states that manual completion confirmation remains required.",
+            "If verification fails: Return to the corresponding Host Recovery, Restore Harbr, or Docker Platform blocker. If automatic checks pass but any prerequisite procedure has an unresolved manual confirmation, stop here.",
+            "Blocks recovery: Yes. Nginx Proxy Manager recovery must not begin until all three prerequisite procedures are complete."
+          ]
+        },
+        {
+          "heading": "2. Locate the protected Nginx Proxy Manager recovery material",
+          "paragraphs": [
+            "Required operator action: Locate the protected Nginx Proxy Manager application directory, configuration, database, and related recovery evidence. Confirm provenance and available integrity evidence without treating the currently running environment as authoritative.",
+            "Verification command: read -r -p 'Protected Nginx Proxy Manager recovery source: ' NPM_RECOVERY_SOURCE && test -r \"$NPM_RECOVERY_SOURCE\" && stat --format='%n %s bytes' \"$NPM_RECOVERY_SOURCE\"",
+            "Expected successful result: The command reports a readable protected source and the operator confirms it contains or references the application, configuration, database, and integrity evidence required for this recovery.",
+            "If verification fails: Check the protected recovery catalog, /srv/storage mount, source path, permissions, checksum or manifest, and evidence freshness. Do not substitute current containers or live application data for protected recovery material.",
+            "Blocks recovery: Yes. The application cannot be restored safely without authoritative protected recovery material."
+          ]
+        },
+        {
+          "heading": "3. Restore the application",
+          "paragraphs": [
+            "Required operator action: Restore only the protected Nginx Proxy Manager project into the expected location recorded in recovery evidence under /srv/docker. Do not restore or start unrelated Compose projects.",
+            "Verification command: read -r -p 'Restored Nginx Proxy Manager project directory: ' NPM_PROJECT_DIR && read -r -p 'Restored Nginx Proxy Manager Compose file: ' NPM_COMPOSE_FILE && case \"$NPM_PROJECT_DIR\" in /srv/docker/*) ;; *) exit 1 ;; esac && test -d \"$NPM_PROJECT_DIR\" && test -f \"$NPM_COMPOSE_FILE\" && docker compose -f \"$NPM_COMPOSE_FILE\" config --quiet",
+            "Expected successful result: The restored project is under /srv/docker, its selected Compose definition exists, and Docker Compose evaluates it successfully without starting services.",
+            "If verification fails: Check the protected expected location, restore completeness, project ownership and modes, Compose filename, environment references, and whether unrelated project material was mixed into the restore.",
+            "Blocks recovery: Yes. A complete isolated Nginx Proxy Manager project and valid Compose definition are required before data restoration."
+          ]
+        },
+        {
+          "heading": "4. Restore application data",
+          "paragraphs": [
+            "Required operator action: Restore the protected Nginx Proxy Manager configuration and database to the paths recorded in recovery evidence. Repeat the verification for each protected data path and intended identity; do not print file contents.",
+            "Verification command: read -r -p 'Restored Nginx Proxy Manager data path: ' NPM_DATA_PATH && read -r -p 'Intended service user: ' NPM_SERVICE_USER && test -e \"$NPM_DATA_PATH\" && sudo -u \"$NPM_SERVICE_USER\" test -r \"$NPM_DATA_PATH\" && stat --format='%U:%G %a %n' \"$NPM_DATA_PATH\"",
+            "Expected successful result: Every restored configuration and database path exists, is readable by its recorded service identity, and reports ownership and modes matching protected evidence.",
+            "If verification fails: Check the selected archive, target mount, database and configuration paths, ownership, modes, ACLs, service identity, and whether the protected restore completed without truncation.",
+            "Blocks recovery: Yes. Nginx Proxy Manager must not start with missing, unreadable, or incorrectly owned protected configuration or database data."
+          ]
+        },
+        {
+          "heading": "5. Start the application",
+          "paragraphs": [
+            "Required operator action: Start only the restored Nginx Proxy Manager Compose project selected from protected evidence. Do not start unrelated application stacks.",
+            "Verification command: read -r -p 'Nginx Proxy Manager Compose file: ' NPM_COMPOSE_FILE && test -f \"$NPM_COMPOSE_FILE\" && docker compose -f \"$NPM_COMPOSE_FILE\" up -d && docker compose -f \"$NPM_COMPOSE_FILE\" ps --status running --services",
+            "Expected successful result: Docker Compose starts only services from the selected Nginx Proxy Manager definition and reports the expected protected services as running.",
+            "If verification fails: Check the selected Compose file, restored environment and secret files, shared networks, storage mounts, port conflicts, image availability, container status, and project logs.",
+            "Blocks recovery: Yes. Reverse proxy verification cannot continue until the selected Nginx Proxy Manager stack is running."
+          ]
+        },
+        {
+          "heading": "6. Verify operational health",
+          "paragraphs": [
+            "Required operator action: Verify the selected project services are running, the recorded web interface is reachable, database-backed application pages load correctly, and startup completes without operational errors.",
+            "Verification command: read -r -p 'Nginx Proxy Manager Compose file: ' NPM_COMPOSE_FILE && read -r -p 'Recorded Nginx Proxy Manager interface URL: ' NPM_INTERFACE_URL && docker compose -f \"$NPM_COMPOSE_FILE\" ps --status running --services | grep -q . && curl --fail --silent --show-error \"$NPM_INTERFACE_URL\" > /dev/null && NPM_RECOVERY_LOG=$(mktemp) && chmod 600 \"$NPM_RECOVERY_LOG\" && docker compose -f \"$NPM_COMPOSE_FILE\" logs --since 5m --no-color > \"$NPM_RECOVERY_LOG\" && printf 'Restricted startup log: %s\\n' \"$NPM_RECOVERY_LOG\"",
+            "Expected successful result: The expected project services are running, the recorded interface responds successfully, database-dependent interface functions load during operator review, and the restricted startup log contains no unresolved operational error.",
+            "If verification fails: Check container health and logs, the protected database restore, database connectivity, interface URL, shared networks, storage permissions, port publishing, and application startup dependencies.",
+            "Blocks recovery: Yes. Nginx Proxy Manager is not operational while containers, interface access, database-backed behavior, or startup health remains unresolved."
+          ]
+        },
+        {
+          "heading": "7. Verify reverse proxy configuration",
+          "paragraphs": [
+            "Required operator action: In the restored interface, compare proxy-host records with protected recovery evidence and confirm every expected proxy host is present. Use the protected database and configuration as the source; do not recreate records manually when protected material exists.",
+            "Verification command: read -r -p 'Recorded Nginx Proxy Manager interface URL: ' NPM_INTERFACE_URL && curl --fail --silent --show-error \"$NPM_INTERFACE_URL\" > /dev/null && printf '%s\\n' 'Interface reachable; manual protected proxy-host comparison required'",
+            "Expected successful result: The interface is reachable and the operator confirms the complete expected proxy-host set matches protected recovery evidence, with no required host missing or silently recreated.",
+            "If verification fails: Recheck the protected database and configuration restore, application logs, selected recovery point, and evidence freshness. Restore protected material rather than manually rebuilding available proxy-host records.",
+            "Blocks recovery: Yes. Reverse proxy service recovery cannot be trusted until required protected proxy-host configuration is confirmed."
+          ]
+        },
+        {
+          "heading": "8. Verify TLS readiness",
+          "paragraphs": [
+            "Required operator action: Confirm protected certificate metadata and certificate files required by the recovered environment are present and readable by their intended service identity. Manually verify expected certificate assignments and validity through the restored interface without exposing private keys or secret contents.",
+            "Verification command: read -r -p 'Protected TLS material path: ' NPM_TLS_PATH && read -r -p 'Intended TLS service user: ' NPM_TLS_USER && test -e \"$NPM_TLS_PATH\" && sudo -u \"$NPM_TLS_USER\" test -r \"$NPM_TLS_PATH\" && stat --format='%U:%G %a %n' \"$NPM_TLS_PATH\" && printf '%s\\n' 'TLS path verified; manual certificate assignment and validity confirmation still required'",
+            "Expected successful result: The protected TLS path exists with expected ownership and modes, the intended identity can read it, no secret contents are displayed, and the operator completes manual certificate assignment and validity confirmation.",
+            "If verification fails: Check the protected certificate recovery source, target path, ownership, modes, storage mount, service identity, certificate assignment, and evidence freshness. Never print or copy private key material into Harbr.",
+            "Blocks recovery: Yes. Required TLS material and manual assignment or validity confirmation must be complete before publishing recovered web services."
+          ]
+        },
+        {
+          "heading": "9. Confirm Nginx Proxy Manager is ready for service recovery",
+          "paragraphs": [
+            "Required operator action: Run the automatic checks, then manually confirm the protected configuration, proxy-host set, TLS assignments and validity, and resolution of every documented blocker. Automatic verification alone does not authorize service recovery.",
+            "Verification command: read -r -p 'Nginx Proxy Manager Compose file: ' NPM_COMPOSE_FILE && read -r -p 'Recorded Nginx Proxy Manager interface URL: ' NPM_INTERFACE_URL && docker compose -f \"$NPM_COMPOSE_FILE\" ps --status running --services | grep -q . && curl --fail --silent --show-error \"$NPM_INTERFACE_URL\" > /dev/null && NPM_READINESS_LOG=$(mktemp) && chmod 600 \"$NPM_READINESS_LOG\" && docker compose -f \"$NPM_COMPOSE_FILE\" logs --since 5m --no-color > \"$NPM_READINESS_LOG\" && printf '%s\\n' 'Automatic checks passed; manual proxy-host and TLS confirmation still required'",
+            "Expected successful result: The selected application services are running, the interface responds, logs are available for operational review, and the command explicitly states that manual proxy-host and TLS confirmation remains required. Readiness exists only after those confirmations and all blockers are cleared.",
+            "If verification fails: Return to the application, data, health, proxy configuration, or TLS step. If automatic checks pass but protected evidence is stale or a manual confirmation remains incomplete, keep it documented as a blocker.",
+            "Blocks recovery: Yes. Additional web application recovery must wait until automatic checks pass and all required manual proxy and TLS confirmations are complete."
+          ]
+        },
+        {
+          "heading": "10. Identify the next recovery procedure",
+          "paragraphs": [
+            "Required operator action: Review repository-defined recovery metadata and protected recovery evidence for an authoritative next application. No authoritative application recovery order currently exists in the repository, so require manual operator selection and do not invent a recommendation.",
+            "Verification command: printf '%s\\n' 'Next Recovery Procedure' 'Manual operator selection required: no authoritative application recovery order is defined.'",
+            "Expected successful result: The command requires manual operator selection and does not name an application that lacks authoritative ordering evidence.",
+            "If verification fails: Recheck protected recovery material for a newly available authoritative order. If none exists, stop before another application restore and obtain an explicit operator decision based on protected evidence.",
+            "Blocks recovery: Yes. The next application must be selected and recorded from authoritative protected evidence before recovery continues."
+          ]
+        }
+      ]
+    },
+    {
       "id": "restore-guide",
       "title": "Restore Guide",
       "summary": "This operational recovery procedure is being developed.",

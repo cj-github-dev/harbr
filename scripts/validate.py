@@ -29,6 +29,7 @@ APPROVED_RING_HASHES = {
 }
 REQUIRED_GUIDES = {
     "docker-platform",
+    "nginx-proxy-manager",
     "restore-harbr",
     "restore-guide",
     "verification-chain",
@@ -171,6 +172,7 @@ def validate_documentation() -> None:
     host_recovery_id = "host-recovery-prerequisites"
     restore_harbr_id = "restore-harbr"
     docker_platform_id = "docker-platform"
+    nginx_proxy_manager_id = "nginx-proxy-manager"
     placeholder_paragraphs = [
         "This operational recovery procedure is being developed.",
         "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation.",
@@ -210,6 +212,18 @@ def validate_documentation() -> None:
         "9. Confirm the Docker Platform is ready for application recovery",
         "10. Identify the next application recovery procedure",
     ]
+    nginx_proxy_manager_headings = [
+        "1. Verify prerequisites",
+        "2. Locate the protected Nginx Proxy Manager recovery material",
+        "3. Restore the application",
+        "4. Restore application data",
+        "5. Start the application",
+        "6. Verify operational health",
+        "7. Verify reverse proxy configuration",
+        "8. Verify TLS readiness",
+        "9. Confirm Nginx Proxy Manager is ready for service recovery",
+        "10. Identify the next recovery procedure",
+    ]
     step_field_prefixes = (
         "Required operator action:",
         "Verification command:",
@@ -221,21 +235,26 @@ def validate_documentation() -> None:
     require(entries and entries[0].get("id") == host_recovery_id, "Host Recovery must be the first Recovery Center entry")
     require(len(entries) > 1 and entries[1].get("id") == restore_harbr_id, "Restore Harbr must be the second Recovery Center entry")
     require(len(entries) > 2 and entries[2].get("id") == docker_platform_id, "Docker Platform must be the third Recovery Center entry")
+    require(len(entries) > 3 and entries[3].get("id") == nginx_proxy_manager_id, "Nginx Proxy Manager must be the fourth Recovery Center entry")
     require(len(ids) == len(entries), "Recovery Center entry IDs must be unique")
     for entry in entries:
         require(entry.get("title") and entry.get("summary"), f"Incomplete guide metadata: {entry.get('id')}")
-        if entry.get("id") in {host_recovery_id, restore_harbr_id, docker_platform_id}:
+        if entry.get("id") in {host_recovery_id, restore_harbr_id, docker_platform_id, nginx_proxy_manager_id}:
             is_host_recovery = entry.get("id") == host_recovery_id
             is_restore_harbr = entry.get("id") == restore_harbr_id
+            is_docker_platform = entry.get("id") == docker_platform_id
             if is_host_recovery:
                 expected_title = "Host Recovery"
                 expected_headings = host_recovery_headings
             elif is_restore_harbr:
                 expected_title = "Restore Harbr"
                 expected_headings = restore_harbr_headings
-            else:
+            elif is_docker_platform:
                 expected_title = "Docker Platform"
                 expected_headings = docker_platform_headings
+            else:
+                expected_title = "Nginx Proxy Manager"
+                expected_headings = nginx_proxy_manager_headings
             require(entry.get("title") == expected_title, f"{expected_title} has the wrong user-facing title")
             sections = entry.get("sections", [])
             require([section.get("heading") for section in sections] == expected_headings, f"{expected_title} steps are missing or out of order")
@@ -271,7 +290,7 @@ def validate_documentation() -> None:
                     require(marker in guidance_step, f"Restore Harbr guidance-readiness check is missing: {marker}")
                 next_step = "\n".join(sections_by_heading[restore_harbr_headings[8]]["paragraphs"])
                 require("Next Recovery Step" in next_step and "Restore the Docker Platform." in next_step, "Restore Harbr must identify the next recovery step")
-            else:
+            elif is_docker_platform:
                 require(entry.get("summary") == "Restore and verify the shared Docker environment required before application recovery can begin.", "Docker Platform has the wrong summary")
                 inventory_step = "\n".join(sections_by_heading[docker_platform_headings[1]]["paragraphs"])
                 require("Do not substitute docker ps" in inventory_step, "Docker Platform must treat protected evidence as authoritative")
@@ -284,6 +303,24 @@ def validate_documentation() -> None:
                 next_step = "\n".join(sections_by_heading[docker_platform_headings[9]]["paragraphs"])
                 require("no authoritative application recovery order" in next_step.lower(), "Docker Platform must not fabricate an application recovery order")
                 require("Manual operator selection required" in next_step, "Docker Platform must require manual selection without authoritative order metadata")
+            else:
+                require(entry.get("summary") == "Restore Nginx Proxy Manager and verify that reverse proxy services are operational.", "Nginx Proxy Manager has the wrong summary")
+                prerequisite_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[0]]["paragraphs"])
+                for prerequisite in ("host-recovery-prerequisites", "restore-harbr", "docker-platform", "manual procedure completion confirmation"):
+                    require(prerequisite in prerequisite_step, f"Nginx Proxy Manager prerequisite check is missing: {prerequisite}")
+                commands = "\n".join(section["paragraphs"][1] for section in sections)
+                require(commands.count(" up -d") == 1, "Nginx Proxy Manager must contain exactly one application start command")
+                require('docker compose -f "$NPM_COMPOSE_FILE" up -d' in commands, "Nginx Proxy Manager start must be scoped to the selected Compose file")
+                proxy_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[6]]["paragraphs"])
+                require("manual protected proxy-host comparison required" in proxy_step, "Nginx Proxy Manager must verify protected proxy-host configuration")
+                tls_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[7]]["paragraphs"])
+                require("manual certificate assignment and validity confirmation still required" in tls_step, "Nginx Proxy Manager must distinguish manual TLS confirmation")
+                require("Never print or copy private key material" in tls_step, "Nginx Proxy Manager must protect private key material")
+                readiness_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[8]]["paragraphs"])
+                require("Automatic verification alone does not authorize service recovery" in readiness_step, "Nginx Proxy Manager must preserve manual readiness confirmation")
+                next_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[9]]["paragraphs"])
+                require("no authoritative application recovery order" in next_step.lower(), "Nginx Proxy Manager must not fabricate the next recovery procedure")
+                require("Manual operator selection required" in next_step, "Nginx Proxy Manager must require manual selection without authoritative order metadata")
             continue
         require(entry.get("summary") == placeholder_paragraphs[0], f"Guide summary is not the Recovery Center placeholder: {entry.get('id')}")
         require(
