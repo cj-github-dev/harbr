@@ -410,13 +410,23 @@ def validate_documentation() -> None:
                 network_step = "\n".join(sections_by_heading[pihole_recovery_headings[2]]["paragraphs"])
                 for marker in ("PIHOLE_NETWORK_REPORT", "PIHOLE_MISSING_NETWORKS=()", "docker network inspect", "Missing required Pi-hole networks:", '${#PIHOLE_MISSING_NETWORKS[@]}', "false"):
                     require(marker in network_step, f"Pi-hole network verification is incomplete: {marker}")
+                for marker in ("PIHOLE_NETWORK_MODE", ".network_mode", "host)", "none)", "service:*|container:*)", "'')", "bridge)"):
+                    require(marker in network_step, f"Pi-hole network-mode handling is missing: {marker}")
+                require('networks // {"default": null}' not in network_step, "Pi-hole Recovery must not fabricate a default network for host or shared network modes")
+                require("host networking; no Compose network entry is required" in network_step and "intentionally empty network report" in network_step, "Pi-hole host networking must pass without a Docker network report entry")
+                require("network_mode is none; DNS network service is unavailable and recovery is blocked" in network_step, "Pi-hole network_mode none must block DNS recovery")
+                require("shares a network namespace" in network_step and "restore and independently verify the shared network-namespace dependency" in network_step, "Pi-hole shared network namespace modes must block pending dependency verification")
+                require("service has no explicit network and Compose would genuinely attach it" in network_step, "Pi-hole default network must be limited to genuine Compose default attachment")
                 require("does not mutate Docker state" in network_step, "Pi-hole network verification must remain non-mutating")
                 start_step = "\n".join(sections_by_heading[pihole_recovery_headings[3]]["paragraphs"])
                 require(commands.count(" up -d") == 1, "Pi-hole Recovery must contain exactly one stack startup command")
                 require('docker compose -f "$PIHOLE_COMPOSE_FILE" up -d' in start_step, "Pi-hole startup must be scoped to the selected Compose definition")
                 for marker in ("PIHOLE_START_BLOCKERS=()", "PIHOLE_MOUNT_REPORT", "PIHOLE_NETWORK_REPORT", "docker volume inspect", "docker network inspect", "PIHOLE_CONTAINER_ID", 'ps -q "$PIHOLE_SERVICE"'):
                     require(marker in start_step, f"Pi-hole pre-start safety or container discovery is missing: {marker}")
+                for marker in ("PIHOLE_START_NETWORK_MODE", ".network_mode", 'test "$PIHOLE_START_NETWORK_MODE" = "$PIHOLE_NETWORK_MODE"', "host)", 'test ! -s "$PIHOLE_NETWORK_REPORT"', "network_mode:none", "unverified-network-namespace", "''|bridge)"):
+                    require(marker in start_step, f"Pi-hole pre-start network-mode recheck is missing: {marker}")
                 require(start_step.index("PIHOLE_START_BLOCKERS") < start_step.index(" up -d"), "Pi-hole dependencies must be rechecked before startup")
+                require(start_step.index("PIHOLE_START_NETWORK_MODE") < start_step.index(" up -d"), "Pi-hole network mode must be re-derived before startup")
                 require("docker volume create" not in commands and "docker network create" not in commands and "mkdir" not in commands, "Pi-hole verification must not create missing recovery dependencies")
                 health_step = "\n".join(sections_by_heading[pihole_recovery_headings[4]]["paragraphs"])
                 for marker in ('ps --status running -q "$PIHOLE_SERVICE"', "RestartCount", "PIHOLE_RESTARTS_BEFORE", "PIHOLE_RESTARTS_AFTER", ".State.Health", "healthy"):
