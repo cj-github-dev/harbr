@@ -28,6 +28,7 @@ APPROVED_RING_HASHES = {
     RING_CSS_PATH: "73fab272f1ab3ce8c4c19208e1fc727a0af25ed23ad616b2f9058e8a79fd0399",
 }
 REQUIRED_GUIDES = {
+    "restore-harbr",
     "restore-guide",
     "verification-chain",
     "backup-retention",
@@ -167,6 +168,7 @@ def validate_documentation() -> None:
     entries = reference.get("entries", [])
     ids = {entry.get("id") for entry in entries}
     host_recovery_id = "host-recovery-prerequisites"
+    restore_harbr_id = "restore-harbr"
     placeholder_paragraphs = [
         "This operational recovery procedure is being developed.",
         "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation.",
@@ -183,6 +185,17 @@ def validate_documentation() -> None:
         "9. Confirm that the host is ready to restore Harbr",
         "10. Identify restoring Harbr as the next recovery step",
     ]
+    restore_harbr_headings = [
+        "1. Locate the verified Harbr recovery source",
+        "2. Restore the Harbr application",
+        "3. Restore the Harbr configuration",
+        "4. Start Harbr",
+        "5. Verify the Recovery Center is available",
+        "6. Verify recovery evidence",
+        "7. Verify operator access",
+        "8. Confirm Harbr is ready to guide recovery",
+        "9. Identify the next recovery step",
+    ]
     step_field_prefixes = (
         "Required operator action:",
         "Verification command:",
@@ -192,31 +205,49 @@ def validate_documentation() -> None:
     )
     require(REQUIRED_GUIDES <= ids, f"Missing guides: {sorted(REQUIRED_GUIDES - ids)}")
     require(entries and entries[0].get("id") == host_recovery_id, "Host Recovery must be the first Recovery Center entry")
+    require(len(entries) > 1 and entries[1].get("id") == restore_harbr_id, "Restore Harbr must be the second Recovery Center entry")
     require(len(ids) == len(entries), "Recovery Center entry IDs must be unique")
     for entry in entries:
         require(entry.get("title") and entry.get("summary"), f"Incomplete guide metadata: {entry.get('id')}")
-        if entry.get("id") == host_recovery_id:
-            require(entry.get("title") == "Host Recovery", "Host Recovery has the wrong user-facing title")
+        if entry.get("id") in {host_recovery_id, restore_harbr_id}:
+            is_host_recovery = entry.get("id") == host_recovery_id
+            expected_title = "Host Recovery" if is_host_recovery else "Restore Harbr"
+            expected_headings = host_recovery_headings if is_host_recovery else restore_harbr_headings
+            require(entry.get("title") == expected_title, f"{expected_title} has the wrong user-facing title")
             sections = entry.get("sections", [])
-            require([section.get("heading") for section in sections] == host_recovery_headings, "Host Recovery steps are missing or out of order")
+            require([section.get("heading") for section in sections] == expected_headings, f"{expected_title} steps are missing or out of order")
             sections_by_heading = {section["heading"]: section for section in sections}
             for section in sections:
                 paragraphs = section.get("paragraphs", [])
-                require(len(paragraphs) == len(step_field_prefixes), f"Incomplete Host Recovery step: {section.get('heading')}")
+                require(len(paragraphs) == len(step_field_prefixes), f"Incomplete {expected_title} step: {section.get('heading')}")
                 require(
                     all(paragraph.startswith(prefix) for paragraph, prefix in zip(paragraphs, step_field_prefixes)),
-                    f"Host Recovery step fields are missing or out of order: {section.get('heading')}",
+                    f"{expected_title} step fields are missing or out of order: {section.get('heading')}",
                 )
-            ssh_step = "\n".join(sections_by_heading[host_recovery_headings[3]]["paragraphs"])
-            require("Recorded management IP:" in ssh_step and "chris@$MANAGEMENT_IP" in ssh_step, "Host Recovery SSH verification must use the recorded management IP")
-            require("ssh chris@dockerhost" not in ssh_step, "Host Recovery SSH verification must not depend on local hostname resolution")
-            require(ssh_step.index("'id -un'") < ssh_step.index("'hostnamectl --static'"), "Host Recovery must authenticate over SSH before verifying the hostname")
-            docker_step = "\n".join(sections_by_heading[host_recovery_headings[7]]["paragraphs"])
-            require("sudo -u chris docker info" in docker_step, "Host Recovery must prove Docker daemon access as chris")
-            readiness_step = "\n".join(sections_by_heading[host_recovery_headings[8]]["paragraphs"])
-            require("Automatic checks alone do not authorize restoration" in readiness_step, "Host Recovery must distinguish automatic checks from restore authorization")
-            for material in ("verified backup archive", "trusted Harbr source", "protected configuration", "secure credentials"):
-                require(material in readiness_step, f"Host Recovery manual readiness confirmation is missing: {material}")
+            if is_host_recovery:
+                ssh_step = "\n".join(sections_by_heading[host_recovery_headings[3]]["paragraphs"])
+                require("Recorded management IP:" in ssh_step and "chris@$MANAGEMENT_IP" in ssh_step, "Host Recovery SSH verification must use the recorded management IP")
+                require("ssh chris@dockerhost" not in ssh_step, "Host Recovery SSH verification must not depend on local hostname resolution")
+                require(ssh_step.index("'id -un'") < ssh_step.index("'hostnamectl --static'"), "Host Recovery must authenticate over SSH before verifying the hostname")
+                docker_step = "\n".join(sections_by_heading[host_recovery_headings[7]]["paragraphs"])
+                require("sudo -u chris docker info" in docker_step, "Host Recovery must prove Docker daemon access as chris")
+                readiness_step = "\n".join(sections_by_heading[host_recovery_headings[8]]["paragraphs"])
+                require("Automatic checks alone do not authorize restoration" in readiness_step, "Host Recovery must distinguish automatic checks from restore authorization")
+                for material in ("verified backup archive", "trusted Harbr source", "protected configuration", "secure credentials"):
+                    require(material in readiness_step, f"Host Recovery manual readiness confirmation is missing: {material}")
+            else:
+                require(entry.get("summary") == "Restore Harbr and verify that the recovery console is operational.", "Restore Harbr has the wrong summary")
+                application_step = "\n".join(sections_by_heading[restore_harbr_headings[1]]["paragraphs"])
+                require("/srv/docker/harbr" in application_step and "harbr-experience" in application_step, "Restore Harbr must verify the isolated application location")
+                center_step = "\n".join(sections_by_heading[restore_harbr_headings[4]]["paragraphs"])
+                require('entries[0].id == "host-recovery-prerequisites"' in center_step, "Restore Harbr must verify Host Recovery availability")
+                evidence_step = "\n".join(sections_by_heading[restore_harbr_headings[5]]["paragraphs"])
+                require("do not infer or calculate confidence" in evidence_step, "Restore Harbr must preserve explicit evidence states")
+                guidance_step = "\n".join(sections_by_heading[restore_harbr_headings[7]]["paragraphs"])
+                for marker in ("harbr-experience", "Recovery Center", "api/v1/index.json", "MANAGEMENT_IP", "Harbr is ready to guide recovery"):
+                    require(marker in guidance_step, f"Restore Harbr guidance-readiness check is missing: {marker}")
+                next_step = "\n".join(sections_by_heading[restore_harbr_headings[8]]["paragraphs"])
+                require("Next Recovery Step" in next_step and "Restore the Docker Platform." in next_step, "Restore Harbr must identify the next recovery step")
             continue
         require(entry.get("summary") == placeholder_paragraphs[0], f"Guide summary is not the Recovery Center placeholder: {entry.get('id')}")
         require(
