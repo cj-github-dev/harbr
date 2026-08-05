@@ -309,31 +309,54 @@ def validate_documentation() -> None:
                 for prerequisite in ("host-recovery-prerequisites", "restore-harbr", "docker-platform", "manual procedure completion confirmation"):
                     require(prerequisite in prerequisite_step, f"Nginx Proxy Manager prerequisite check is missing: {prerequisite}")
                 manual_input_label = "Manual operator input required because no authoritative recovery value is currently recorded."
-                for section in sections:
-                    command = section["paragraphs"][1]
-                    require(
-                        command.count("read -r -p") == command.count(manual_input_label),
-                        f"Nginx Proxy Manager has an unlabeled manual input: {section.get('heading')}",
-                    )
                 commands = "\n".join(section["paragraphs"][1] for section in sections)
-                require(commands.count(" up -d") == 1, "Nginx Proxy Manager must contain exactly one application start command")
-                require('docker compose -p "$NPM_PROJECT_NAME" -f "$NPM_COMPOSE_FILE" up -d' in commands, "Nginx Proxy Manager start must be scoped to the selected project and Compose file")
-                health_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[5]]["paragraphs"])
-                for marker in ("NPM_APP_SERVICE", "NPM_DB_SERVICE", "NPM_APP_CONTAINER", "NPM_DB_CONTAINER", "NPM_APP_PORT", "NPM_NETWORK", "grep -Fxq"):
-                    require(marker in health_step, f"Nginx Proxy Manager specific health verification is missing: {marker}")
+                require(commands.count("read -r -p") == 3, "Nginx Proxy Manager must limit free-form input to the recovery source and two missing URLs")
+                require(commands.count(manual_input_label) == 3, "Every free-form Nginx Proxy Manager input must explain the missing authoritative datum")
+                prompt_endings = {
+                    "NPM_RECOVERY_SOURCE": " NPM_RECOVERY_SOURCE &&",
+                    "NPM_INTERFACE_URL": " NPM_INTERFACE_URL; fi",
+                    "NPM_PROXY_TEST_URL": " NPM_PROXY_TEST_URL; fi",
+                }
+                for variable, prompt_ending in prompt_endings.items():
+                    require(commands.count(prompt_ending) == 1, f"Nginx Proxy Manager must prompt for {variable} once")
+                for forbidden_prompt in ("container name:", "service name:", "network name:", "container port:", "service user:", "Compose project name:", "Compose file:", "project directory:"):
+                    require(forbidden_prompt not in commands, f"Nginx Proxy Manager must discover rather than prompt for: {forbidden_prompt}")
+                locate_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[1]]["paragraphs"])
+                require("same shell through step 9" in locate_step and "Keep this shell open through step 9" in locate_step, "Nginx Proxy Manager must establish a reusable same-shell recovery context")
+                restore_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[2]]["paragraphs"])
+                for marker in ("NPM_COMPOSE_CANDIDATES", "select NPM_COMPOSE_FILE", "config --services", "config --networks", "config --volumes"):
+                    require(marker in restore_step, f"Nginx Proxy Manager Compose discovery is missing: {marker}")
+                require(restore_step.count("select NPM_COMPOSE_FILE") == 1, "Nginx Proxy Manager must select the discovered Compose definition once")
+                require("${#NPM_COMPOSE_CANDIDATES[@]} == 1" in restore_step, "Nginx Proxy Manager must automatically reuse a uniquely discovered Compose definition")
                 data_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[3]]["paragraphs"])
-                for marker in ("NPM_CONFIG_PATH", "NPM_DATABASE_PATH", "NPM_DATABASE_TYPE", "NPM_SERVICE_USER"):
-                    require(marker in data_step, f"Nginx Proxy Manager protected data verification is missing: {marker}")
+                for marker in ("select NPM_APP_SERVICE", "select NPM_DB_SERVICE", 'in "${NPM_SERVICES[@]}"', "NPM_MOUNT_REPORT", "docker volume inspect"):
+                    require(marker in data_step, f"Nginx Proxy Manager protected-data discovery is missing: {marker}")
+                require(data_step.count('in "${NPM_SERVICES[@]}"') == 2, "Nginx Proxy Manager role selection must be constrained to discovered services")
+                require("NPM_SERVICE_USER" not in commands and "NPM_TLS_USER" not in commands, "Nginx Proxy Manager must not assume container identities are host users")
+                require(commands.count(" up -d") == 1, "Nginx Proxy Manager must contain exactly one application start command")
+                require('docker compose -f "$NPM_COMPOSE_FILE" up -d' in commands, "Nginx Proxy Manager start must be scoped to the selected Compose file")
+                start_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[4]]["paragraphs"])
+                for marker in ('ps -q', "NPM_CONTAINER_IDS", "com.docker.compose.project"):
+                    require(marker in start_step, f"Nginx Proxy Manager container discovery is missing: {marker}")
+                for forbidden_identity in ("NPM_APP_CONTAINER", "NPM_DB_CONTAINER"):
+                    require(forbidden_identity not in commands, f"Nginx Proxy Manager must not request or depend on generated container identity: {forbidden_identity}")
+                health_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[5]]["paragraphs"])
+                for marker in ("NPM_EXPECTED_SERVICES", "NPM_RUNNING_SERVICES", "ps -q", "NPM_EXPECTED_NETWORKS", "docker network inspect", ".Mounts", ".NetworkSettings.Networks", "Publishers", "NPM_APP_SERVICE", "NPM_DB_SERVICE"):
+                    require(marker in health_step, f"Nginx Proxy Manager specific health verification is missing: {marker}")
+                require("no published host port is acceptable" in health_step, "Nginx Proxy Manager must permit intentional network-only publication")
                 proxy_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[6]]["paragraphs"])
-                require("manual protected proxy-host comparison required" in proxy_step, "Nginx Proxy Manager must verify protected proxy-host configuration")
+                require("manual administrative login and protected proxy-host comparison required" in proxy_step, "Nginx Proxy Manager must preserve manual administrative and proxy-host verification")
+                require("read -r -p" not in proxy_step, "Nginx Proxy Manager must reuse the interface URL")
                 tls_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[7]]["paragraphs"])
                 require("manual certificate assignment and validity confirmation still required" in tls_step, "Nginx Proxy Manager must distinguish manual TLS confirmation")
-                require("Never print or copy private key material" in tls_step, "Nginx Proxy Manager must protect private key material")
+                require("never display certificates, credentials, or private keys" in tls_step, "Nginx Proxy Manager must protect TLS and credential material")
+                require("NPM_MOUNT_REPORT" in tls_step and ".Mounts" in tls_step, "Nginx Proxy Manager TLS verification must reuse discovered mounts")
                 readiness_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[8]]["paragraphs"])
                 require("Automatic verification alone does not authorize service recovery" in readiness_step, "Nginx Proxy Manager must preserve manual readiness confirmation")
-                require("NPM_PROXY_TEST_URL" in readiness_step and "administrative, proxy-host, and TLS confirmation" in readiness_step, "Nginx Proxy Manager must preserve manual operational verification")
+                require("NPM_PROXY_TEST_URL" in readiness_step and "manual administrative, proxy-host, TLS, and database-backed behavior confirmation" in readiness_step, "Nginx Proxy Manager must preserve manual operational verification")
                 require("chmod 600" in health_step and "chmod 600" in readiness_step, "Nginx Proxy Manager logs must remain restricted")
-                for unsafe_output in ('cat "$NPM_CONFIG_PATH"', 'cat "$NPM_DATABASE_PATH"', 'cat "$NPM_TLS_PATH"', 'printenv', 'docker compose config'):
+                require(commands.count("config --format json") == commands.count("config --format json | jq"), "Nginx Proxy Manager resolved Compose data must be filtered rather than displayed")
+                for unsafe_output in ("printenv", "docker inspect --format '{{.Config.Env", "docker compose config >", "docker compose config |", "cat .env", "cat /run/secrets"):
                     require(unsafe_output not in commands, f"Nginx Proxy Manager must not display protected content: {unsafe_output}")
                 next_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[9]]["paragraphs"])
                 require("no authoritative application recovery order" in next_step.lower(), "Nginx Proxy Manager must not fabricate the next recovery procedure")
