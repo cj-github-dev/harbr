@@ -193,7 +193,7 @@ def validate_documentation() -> None:
         "5. Verify the Recovery Center is available",
         "6. Verify recovery evidence",
         "7. Verify operator access",
-        "8. Confirm Harbr is operational",
+        "8. Confirm Harbr is ready to guide recovery",
         "9. Identify the next recovery step",
     ]
     step_field_prefixes = (
@@ -243,6 +243,9 @@ def validate_documentation() -> None:
                 require('entries[0].id == "host-recovery-prerequisites"' in center_step, "Restore Harbr must verify Host Recovery availability")
                 evidence_step = "\n".join(sections_by_heading[restore_harbr_headings[5]]["paragraphs"])
                 require("do not infer or calculate confidence" in evidence_step, "Restore Harbr must preserve explicit evidence states")
+                guidance_step = "\n".join(sections_by_heading[restore_harbr_headings[7]]["paragraphs"])
+                for marker in ("harbr-experience", "Recovery Center", "api/v1/index.json", "MANAGEMENT_IP", "Harbr is ready to guide recovery"):
+                    require(marker in guidance_step, f"Restore Harbr guidance-readiness check is missing: {marker}")
                 next_step = "\n".join(sections_by_heading[restore_harbr_headings[8]]["paragraphs"])
                 require("Next Recovery Step" in next_step and "Restore the Docker Platform." in next_step, "Restore Harbr must identify the next recovery step")
             continue

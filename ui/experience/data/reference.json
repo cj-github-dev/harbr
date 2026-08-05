@@ -185,13 +185,13 @@
           ]
         },
         {
-          "heading": "8. Confirm Harbr is operational",
+          "heading": "8. Confirm Harbr is ready to guide recovery",
           "paragraphs": [
-            "Required operator action: Review steps 1 through 7 and confirm the running interface, Recovery Center, current API resources, and operator access are all available. This confirmation transitions recovery from manual host work to Harbr-guided recovery.",
-            "Verification command: cd /srv/docker/harbr && docker compose ps --status running --services | grep -qx harbr-experience && curl --fail --silent http://localhost:8088/ | grep -q 'id=\"reference\"' && curl --fail --silent http://localhost:8088/api/v1/index.json | jq -e '.product.name == \"Harbr\" and (.resources | length > 0)'",
-            "Expected successful result: The container is running, the Recovery Center is served, and the live API identifies Harbr with published resources. The operator has confirmed the interface is usable and its current evidence states are explicit.",
-            "If verification fails: Return to the failed startup, Recovery Center, evidence, or operator-access step. Do not transition to Harbr-guided recovery until every blocking check succeeds.",
-            "Blocks recovery: Yes. Harbr is operational as the recovery console only when all automatic checks and operator confirmation succeed."
+            "Required operator action: Confirm Harbr is running, the Recovery Center is available, every required recovery-evidence resource in the current API index is readable, and the operator can access the interface through the recorded management IP. Complete this step only when Harbr is ready to guide the next recovery stage.",
+            "Verification command: cd /srv/docker/harbr && docker compose ps --status running --services | grep -qx harbr-experience && curl --fail --silent http://localhost:8088/ | grep -q 'id=\"reference\"' && for resource in $(jq -r '.resources[]' api/v1/index.json); do curl --fail --silent \"http://localhost:8088$resource\" | jq empty || exit 1; done && read -r -p 'Recorded management IP: ' MANAGEMENT_IP && curl --fail --silent --show-error \"http://$MANAGEMENT_IP:8088/\" | grep -q '<title>Harbr</title>' && printf '%s\\n' 'Harbr is ready to guide recovery'",
+            "Expected successful result: The harbr-experience container is running, the Recovery Center is served, every indexed recovery-evidence resource is reachable and valid JSON, operator access through the recorded management IP succeeds, and the command prints Harbr is ready to guide recovery.",
+            "If verification fails: Return to the corresponding startup, Recovery Center, recovery-evidence, or operator-access step. Do not transition to Harbr-guided recovery until the running service, Recovery Center, required readable evidence, and operator access all succeed.",
+            "Blocks recovery: Yes. Harbr is ready to guide the next recovery stage only when every check in this step succeeds."
           ]
         },
         {
