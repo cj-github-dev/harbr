@@ -32,6 +32,7 @@ REQUIRED_GUIDES = {
     "nginx-proxy-manager",
     "pihole-recovery",
     "jellyfin-recovery",
+    "home-assistant-recovery",
     "restore-harbr",
     "restore-guide",
     "verification-chain",
@@ -169,6 +170,7 @@ def validate_archives() -> None:
 
 def validate_documentation() -> None:
     reference = load_json(REFERENCE_PATH)
+    require(reference.get("version") == "1.4", "Recovery Center reference version must be 1.4")
     entries = reference.get("entries", [])
     ids = {entry.get("id") for entry in entries}
     host_recovery_id = "host-recovery-prerequisites"
@@ -177,6 +179,7 @@ def validate_documentation() -> None:
     nginx_proxy_manager_id = "nginx-proxy-manager"
     pihole_recovery_id = "pihole-recovery"
     jellyfin_recovery_id = "jellyfin-recovery"
+    home_assistant_recovery_id = "home-assistant-recovery"
     placeholder_paragraphs = [
         "This operational recovery procedure is being developed.",
         "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation.",
@@ -252,6 +255,18 @@ def validate_documentation() -> None:
         "9. Complete manual Jellyfin validation",
         "10. Confirm Jellyfin recovery is complete",
     ]
+    home_assistant_recovery_headings = [
+        "1. Locate the Home Assistant Compose project",
+        "2. Classify Home Assistant mounts",
+        "3. Verify protected Home Assistant state",
+        "4. Verify required host dependencies",
+        "5. Verify Home Assistant networking",
+        "6. Start the Home Assistant stack",
+        "7. Verify container stability and Home Assistant availability",
+        "8. Verify restored Home Assistant application state",
+        "9. Complete manual Home Assistant validation",
+        "10. Confirm Home Assistant recovery is complete",
+    ]
     step_field_prefixes = (
         "Required operator action:",
         "Verification command:",
@@ -266,15 +281,17 @@ def validate_documentation() -> None:
     require(len(entries) > 3 and entries[3].get("id") == nginx_proxy_manager_id, "Nginx Proxy Manager must be the fourth Recovery Center entry")
     require(len(entries) > 4 and entries[4].get("id") == pihole_recovery_id, "Pi-hole Recovery must be the fifth Recovery Center entry")
     require(len(entries) > 5 and entries[5].get("id") == jellyfin_recovery_id, "Jellyfin Recovery must be the sixth Recovery Center entry")
+    require(len(entries) > 6 and entries[6].get("id") == home_assistant_recovery_id, "Home Assistant Recovery must be the seventh Recovery Center entry")
     require(len(ids) == len(entries), "Recovery Center entry IDs must be unique")
     for entry in entries:
         require(entry.get("title") and entry.get("summary"), f"Incomplete guide metadata: {entry.get('id')}")
-        if entry.get("id") in {host_recovery_id, restore_harbr_id, docker_platform_id, nginx_proxy_manager_id, pihole_recovery_id, jellyfin_recovery_id}:
+        if entry.get("id") in {host_recovery_id, restore_harbr_id, docker_platform_id, nginx_proxy_manager_id, pihole_recovery_id, jellyfin_recovery_id, home_assistant_recovery_id}:
             is_host_recovery = entry.get("id") == host_recovery_id
             is_restore_harbr = entry.get("id") == restore_harbr_id
             is_docker_platform = entry.get("id") == docker_platform_id
             is_nginx_proxy_manager = entry.get("id") == nginx_proxy_manager_id
             is_pihole_recovery = entry.get("id") == pihole_recovery_id
+            is_jellyfin_recovery = entry.get("id") == jellyfin_recovery_id
             if is_host_recovery:
                 expected_title = "Host Recovery"
                 expected_headings = host_recovery_headings
@@ -290,9 +307,12 @@ def validate_documentation() -> None:
             elif is_pihole_recovery:
                 expected_title = "Pi-hole Recovery"
                 expected_headings = pihole_recovery_headings
-            else:
+            elif is_jellyfin_recovery:
                 expected_title = "Jellyfin Recovery"
                 expected_headings = jellyfin_recovery_headings
+            else:
+                expected_title = "Home Assistant Recovery"
+                expected_headings = home_assistant_recovery_headings
             require(entry.get("title") == expected_title, f"{expected_title} has the wrong user-facing title")
             sections = entry.get("sections", [])
             require([section.get("heading") for section in sections] == expected_headings, f"{expected_title} steps are missing or out of order")
@@ -483,7 +503,7 @@ def validate_documentation() -> None:
                 require(commands.count("config --format json") == commands.count("config --format json | jq"), "Pi-hole resolved Compose data must be filtered rather than displayed")
                 for unsafe_output in ("printenv", "Config.Env", "cat .env", "cat /run/secrets", "docker compose config >", "docker compose config |"):
                     require(unsafe_output not in commands, f"Pi-hole Recovery must not display protected content: {unsafe_output}")
-            else:
+            elif is_jellyfin_recovery:
                 require(entry.get("summary") == "Restore Jellyfin application state and verify its separately maintained media library.", "Jellyfin Recovery has the wrong summary")
                 commands = "\n".join(section["paragraphs"][1] for section in sections)
                 require("read -r -p" not in commands, "Jellyfin Recovery must discover values rather than request free-form input")
@@ -533,6 +553,50 @@ def validate_documentation() -> None:
                 require(commands.count("config --format json") == commands.count("config --format json | jq"), "Jellyfin resolved Compose data must be filtered")
                 for unsafe_output in ("printenv", "Config.Env", "cat .env", "cat /run/secrets"):
                     require(unsafe_output not in commands, f"Jellyfin Recovery must not display protected content: {unsafe_output}")
+            else:
+                require(entry.get("summary") == "Restore Home Assistant's protected application state and verify that the restored instance is operational.", "Home Assistant Recovery has the wrong summary")
+                commands = "\n".join(section["paragraphs"][1] for section in sections)
+                require("read -r -p" not in commands, "Home Assistant Recovery must discover values rather than request free-form input")
+                locate_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[0]]["paragraphs"])
+                for marker in ("same shell", "HOMEASSISTANT_COMPOSE_CANDIDATES", "HOMEASSISTANT_SERVICE_CANDIDATES", "select HOMEASSISTANT_SELECTION", "HOMEASSISTANT_MOUNT_REPORT", "HOMEASSISTANT_PORT_REPORT", "Keep this shell open through step 10"):
+                    require(marker in locate_step, f"Home Assistant Compose discovery is missing: {marker}")
+                classification_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[1]]["paragraphs"])
+                for marker in ("protected-state", "rebuildable", "runtime-support", "HOMEASSISTANT_CLASSIFIED_MOUNTS", "select classification in protected-state rebuildable runtime-support", "no mount remains unresolved"):
+                    require(marker in classification_step, f"Home Assistant mount classification is missing: {marker}")
+                state_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[2]]["paragraphs"])
+                for marker in ("homeassistant_state_present()", "homeassistant_runtime_present()", "HOMEASSISTANT_MISSING_STATE", "HOMEASSISTANT_MISSING_RUNTIME", ".Mountpoint", "-mindepth 1 -maxdepth 3 -print -quit", "Missing or empty protected Home Assistant state"):
+                    require(marker in state_step, f"Home Assistant protected-state verification is missing: {marker}")
+                require("Do not create directories or volumes, initialize clean state" in state_step, "Home Assistant Recovery must block clean-state initialization")
+                dependency_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[3]]["paragraphs"])
+                for marker in ("HOMEASSISTANT_HOST_REPORT", ".devices", ".privileged", ".cap_add", "HOMEASSISTANT_MISSING_DEVICES"):
+                    require(marker in dependency_step, f"Home Assistant host-dependency verification is missing: {marker}")
+                network_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[4]]["paragraphs"])
+                for marker in ("HOMEASSISTANT_NETWORK_MODE", "host)", "none)", "service:*|container:*)", "bridge)", "'')", "docker network inspect"):
+                    require(marker in network_step, f"Home Assistant network-mode handling is missing: {marker}")
+                require('networks // {"default": null}' not in network_step and "Do not fabricate a default network" in network_step, "Home Assistant Recovery must not fabricate default networks")
+                start_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[5]]["paragraphs"])
+                require(commands.count(" up -d") == 1 and 'docker compose -f "$HOMEASSISTANT_COMPOSE_FILE" up -d' in start_step, "Home Assistant Recovery must contain exactly one scoped startup")
+                for marker in ("HOMEASSISTANT_START_BLOCKERS", "homeassistant_state_present", "homeassistant_runtime_present", "HOMEASSISTANT_HOST_REPORT", "HOMEASSISTANT_NETWORK_REPORT", "HOMEASSISTANT_CONTAINER_ID", 'ps -q "$HOMEASSISTANT_SERVICE"'):
+                    require(marker in start_step, f"Home Assistant pre-start recheck is missing: {marker}")
+                require(start_step.index("homeassistant_state_present") < start_step.index(" up -d"), "Home Assistant protected state must be rechecked before startup")
+                availability_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[6]]["paragraphs"])
+                for marker in ("RestartCount", ".State.Health", "HOMEASSISTANT_NETWORK_MODE", "8123/tcp", "NetworkSettings.Networks", "manifest.json", "api/discovery_info", '.name == "Home Assistant"', ".version", '= 200'):
+                    require(marker in availability_step, f"Home Assistant stability or endpoint verification is missing: {marker}")
+                require("arbitrary 2xx pages" in availability_step and "authentication responses" in availability_step, "Home Assistant endpoint verification must reject arbitrary HTTP success")
+                restored_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[7]]["paragraphs"])
+                for marker in ("api/onboarding", "all(.[]; .done == true)", ".Mounts", "version", "first-run onboarding", "initialization"):
+                    require(marker in restored_step, f"Home Assistant restored-state verification is missing: {marker}")
+                manual_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[8]]["paragraphs"])
+                for marker in ("dashboards", "users", "integrations", "automations", "scripts", "scenes", "devices", "entities", "notifications", "Nginx Proxy Manager", "representative automation"):
+                    require(marker in manual_step, f"Home Assistant manual validation is missing: {marker}")
+                completion_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[9]]["paragraphs"])
+                for marker in ("Home Assistant application state has been restored", "Configuration has been successfully recognized", "Representative automation has been manually validated", "Home Assistant recovery is complete", "homeassistant_state_present", "homeassistant_runtime_present", "api/onboarding", ".HostConfig.Devices", ".HostConfig.Privileged", ".HostConfig.CapAdd"):
+                    require(marker in completion_step, f"Home Assistant completion is missing: {marker}")
+                require("docker volume create" not in commands and "docker network create" not in commands and "mkdir" not in commands, "Home Assistant verification must not create missing recovery data")
+                require("container name" not in commands and "HOMEASSISTANT_CONTAINER_NAME" not in commands, "Home Assistant Recovery must not use generated container names")
+                require(commands.count("config --format json") == commands.count("config --format json | jq"), "Home Assistant resolved Compose data must be filtered")
+                for unsafe_output in ("printenv", "Config.Env", "cat .env", "cat /run/secrets", "secrets.yaml", "docker logs"):
+                    require(unsafe_output not in commands, f"Home Assistant Recovery must not display protected content: {unsafe_output}")
             continue
         require(entry.get("summary") == placeholder_paragraphs[0], f"Guide summary is not the Recovery Center placeholder: {entry.get('id')}")
         require(
