@@ -308,9 +308,22 @@ def validate_documentation() -> None:
                 prerequisite_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[0]]["paragraphs"])
                 for prerequisite in ("host-recovery-prerequisites", "restore-harbr", "docker-platform", "manual procedure completion confirmation"):
                     require(prerequisite in prerequisite_step, f"Nginx Proxy Manager prerequisite check is missing: {prerequisite}")
+                manual_input_label = "Manual operator input required because no authoritative recovery value is currently recorded."
+                for section in sections:
+                    command = section["paragraphs"][1]
+                    require(
+                        command.count("read -r -p") == command.count(manual_input_label),
+                        f"Nginx Proxy Manager has an unlabeled manual input: {section.get('heading')}",
+                    )
                 commands = "\n".join(section["paragraphs"][1] for section in sections)
                 require(commands.count(" up -d") == 1, "Nginx Proxy Manager must contain exactly one application start command")
-                require('docker compose -f "$NPM_COMPOSE_FILE" up -d' in commands, "Nginx Proxy Manager start must be scoped to the selected Compose file")
+                require('docker compose -p "$NPM_PROJECT_NAME" -f "$NPM_COMPOSE_FILE" up -d' in commands, "Nginx Proxy Manager start must be scoped to the selected project and Compose file")
+                health_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[5]]["paragraphs"])
+                for marker in ("NPM_APP_SERVICE", "NPM_DB_SERVICE", "NPM_APP_CONTAINER", "NPM_DB_CONTAINER", "NPM_APP_PORT", "NPM_NETWORK", "grep -Fxq"):
+                    require(marker in health_step, f"Nginx Proxy Manager specific health verification is missing: {marker}")
+                data_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[3]]["paragraphs"])
+                for marker in ("NPM_CONFIG_PATH", "NPM_DATABASE_PATH", "NPM_DATABASE_TYPE", "NPM_SERVICE_USER"):
+                    require(marker in data_step, f"Nginx Proxy Manager protected data verification is missing: {marker}")
                 proxy_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[6]]["paragraphs"])
                 require("manual protected proxy-host comparison required" in proxy_step, "Nginx Proxy Manager must verify protected proxy-host configuration")
                 tls_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[7]]["paragraphs"])
@@ -318,6 +331,10 @@ def validate_documentation() -> None:
                 require("Never print or copy private key material" in tls_step, "Nginx Proxy Manager must protect private key material")
                 readiness_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[8]]["paragraphs"])
                 require("Automatic verification alone does not authorize service recovery" in readiness_step, "Nginx Proxy Manager must preserve manual readiness confirmation")
+                require("NPM_PROXY_TEST_URL" in readiness_step and "administrative, proxy-host, and TLS confirmation" in readiness_step, "Nginx Proxy Manager must preserve manual operational verification")
+                require("chmod 600" in health_step and "chmod 600" in readiness_step, "Nginx Proxy Manager logs must remain restricted")
+                for unsafe_output in ('cat "$NPM_CONFIG_PATH"', 'cat "$NPM_DATABASE_PATH"', 'cat "$NPM_TLS_PATH"', 'printenv', 'docker compose config'):
+                    require(unsafe_output not in commands, f"Nginx Proxy Manager must not display protected content: {unsafe_output}")
                 next_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[9]]["paragraphs"])
                 require("no authoritative application recovery order" in next_step.lower(), "Nginx Proxy Manager must not fabricate the next recovery procedure")
                 require("Manual operator selection required" in next_step, "Nginx Proxy Manager must require manual selection without authoritative order metadata")
