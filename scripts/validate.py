@@ -30,6 +30,7 @@ APPROVED_RING_HASHES = {
 REQUIRED_GUIDES = {
     "docker-platform",
     "nginx-proxy-manager",
+    "pihole-recovery",
     "restore-harbr",
     "restore-guide",
     "verification-chain",
@@ -173,6 +174,7 @@ def validate_documentation() -> None:
     restore_harbr_id = "restore-harbr"
     docker_platform_id = "docker-platform"
     nginx_proxy_manager_id = "nginx-proxy-manager"
+    pihole_recovery_id = "pihole-recovery"
     placeholder_paragraphs = [
         "This operational recovery procedure is being developed.",
         "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation.",
@@ -224,6 +226,18 @@ def validate_documentation() -> None:
         "9. Confirm Nginx Proxy Manager is ready for service recovery",
         "10. Identify the next recovery procedure",
     ]
+    pihole_recovery_headings = [
+        "1. Locate the Pi-hole Compose project",
+        "2. Verify required persistent data exists",
+        "3. Verify required Docker networks",
+        "4. Start the Pi-hole stack",
+        "5. Verify container health",
+        "6. Verify DNS service",
+        "7. Verify administrative interface",
+        "8. Verify upstream DNS functionality",
+        "9. Complete manual validation",
+        "10. Confirm Pi-hole recovery is complete",
+    ]
     step_field_prefixes = (
         "Required operator action:",
         "Verification command:",
@@ -236,13 +250,15 @@ def validate_documentation() -> None:
     require(len(entries) > 1 and entries[1].get("id") == restore_harbr_id, "Restore Harbr must be the second Recovery Center entry")
     require(len(entries) > 2 and entries[2].get("id") == docker_platform_id, "Docker Platform must be the third Recovery Center entry")
     require(len(entries) > 3 and entries[3].get("id") == nginx_proxy_manager_id, "Nginx Proxy Manager must be the fourth Recovery Center entry")
+    require(len(entries) > 4 and entries[4].get("id") == pihole_recovery_id, "Pi-hole Recovery must be the fifth Recovery Center entry")
     require(len(ids) == len(entries), "Recovery Center entry IDs must be unique")
     for entry in entries:
         require(entry.get("title") and entry.get("summary"), f"Incomplete guide metadata: {entry.get('id')}")
-        if entry.get("id") in {host_recovery_id, restore_harbr_id, docker_platform_id, nginx_proxy_manager_id}:
+        if entry.get("id") in {host_recovery_id, restore_harbr_id, docker_platform_id, nginx_proxy_manager_id, pihole_recovery_id}:
             is_host_recovery = entry.get("id") == host_recovery_id
             is_restore_harbr = entry.get("id") == restore_harbr_id
             is_docker_platform = entry.get("id") == docker_platform_id
+            is_nginx_proxy_manager = entry.get("id") == nginx_proxy_manager_id
             if is_host_recovery:
                 expected_title = "Host Recovery"
                 expected_headings = host_recovery_headings
@@ -252,9 +268,12 @@ def validate_documentation() -> None:
             elif is_docker_platform:
                 expected_title = "Docker Platform"
                 expected_headings = docker_platform_headings
-            else:
+            elif is_nginx_proxy_manager:
                 expected_title = "Nginx Proxy Manager"
                 expected_headings = nginx_proxy_manager_headings
+            else:
+                expected_title = "Pi-hole Recovery"
+                expected_headings = pihole_recovery_headings
             require(entry.get("title") == expected_title, f"{expected_title} has the wrong user-facing title")
             sections = entry.get("sections", [])
             require([section.get("heading") for section in sections] == expected_headings, f"{expected_title} steps are missing or out of order")
@@ -303,7 +322,7 @@ def validate_documentation() -> None:
                 next_step = "\n".join(sections_by_heading[docker_platform_headings[9]]["paragraphs"])
                 require("no authoritative application recovery order" in next_step.lower(), "Docker Platform must not fabricate an application recovery order")
                 require("Manual operator selection required" in next_step, "Docker Platform must require manual selection without authoritative order metadata")
-            else:
+            elif is_nginx_proxy_manager:
                 require(entry.get("summary") == "Restore Nginx Proxy Manager and verify that reverse proxy services are operational.", "Nginx Proxy Manager has the wrong summary")
                 prerequisite_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[0]]["paragraphs"])
                 for prerequisite in ("host-recovery-prerequisites", "restore-harbr", "docker-platform", "manual procedure completion confirmation"):
@@ -375,6 +394,76 @@ def validate_documentation() -> None:
                 next_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[9]]["paragraphs"])
                 require("no authoritative application recovery order" in next_step.lower(), "Nginx Proxy Manager must not fabricate the next recovery procedure")
                 require("Manual operator selection required" in next_step, "Nginx Proxy Manager must require manual selection without authoritative order metadata")
+            else:
+                require(entry.get("summary") == "Restore Pi-hole and verify that dependable local DNS is operational.", "Pi-hole Recovery has the wrong summary")
+                commands = "\n".join(section["paragraphs"][1] for section in sections)
+                require("read -r -p" not in commands, "Pi-hole Recovery must discover values rather than request free-form input")
+                locate_step = "\n".join(sections_by_heading[pihole_recovery_headings[0]]["paragraphs"])
+                for marker in ("same shell", "PIHOLE_COMPOSE_CANDIDATES", "select PIHOLE_COMPOSE_FILE", "PIHOLE_SERVICE_CANDIDATES", "select PIHOLE_SERVICE", "PIHOLE_MOUNT_REPORT", "Keep this shell open through step 10"):
+                    require(marker in locate_step, f"Pi-hole Compose discovery is missing: {marker}")
+                require("${#PIHOLE_COMPOSE_CANDIDATES[@]} == 1" in locate_step, "Pi-hole Recovery must automatically reuse a unique Compose definition")
+                require("${#PIHOLE_SERVICE_CANDIDATES[@]} == 1" in locate_step, "Pi-hole Recovery must automatically reuse a unique Pi-hole service")
+                persistent_step = "\n".join(sections_by_heading[pihole_recovery_headings[1]]["paragraphs"])
+                for marker in ("PIHOLE_MISSING_DATA=()", 'PIHOLE_MISSING_DATA+=("bind:$source")', 'PIHOLE_MISSING_DATA+=("volume:$source")', "docker volume inspect", "Missing required Pi-hole persistent data:", '${#PIHOLE_MISSING_DATA[@]}', "false"):
+                    require(marker in persistent_step, f"Pi-hole persistent-data blocker is incomplete: {marker}")
+                require("Do not create an empty directory or volume" in persistent_step, "Pi-hole Recovery must prohibit replacement empty data")
+                network_step = "\n".join(sections_by_heading[pihole_recovery_headings[2]]["paragraphs"])
+                for marker in ("PIHOLE_NETWORK_REPORT", "PIHOLE_MISSING_NETWORKS=()", "docker network inspect", "Missing required Pi-hole networks:", '${#PIHOLE_MISSING_NETWORKS[@]}', "false"):
+                    require(marker in network_step, f"Pi-hole network verification is incomplete: {marker}")
+                for marker in ("PIHOLE_NETWORK_MODE", ".network_mode", "host)", "none)", "service:*|container:*)", "'')", "bridge)"):
+                    require(marker in network_step, f"Pi-hole network-mode handling is missing: {marker}")
+                require('networks // {"default": null}' not in network_step, "Pi-hole Recovery must not fabricate a default network for host or shared network modes")
+                require("host networking; no Compose network entry is required" in network_step and "intentionally empty network report" in network_step, "Pi-hole host networking must pass without a Docker network report entry")
+                require("network_mode is none; DNS network service is unavailable and recovery is blocked" in network_step, "Pi-hole network_mode none must block DNS recovery")
+                require("shares a network namespace" in network_step and "restore and independently verify the shared network-namespace dependency" in network_step, "Pi-hole shared network namespace modes must block pending dependency verification")
+                require("service has no explicit network and Compose would genuinely attach it" in network_step, "Pi-hole default network must be limited to genuine Compose default attachment")
+                require("does not mutate Docker state" in network_step, "Pi-hole network verification must remain non-mutating")
+                start_step = "\n".join(sections_by_heading[pihole_recovery_headings[3]]["paragraphs"])
+                require(commands.count(" up -d") == 1, "Pi-hole Recovery must contain exactly one stack startup command")
+                require('docker compose -f "$PIHOLE_COMPOSE_FILE" up -d' in start_step, "Pi-hole startup must be scoped to the selected Compose definition")
+                for marker in ("PIHOLE_START_BLOCKERS=()", "PIHOLE_MOUNT_REPORT", "PIHOLE_NETWORK_REPORT", "docker volume inspect", "docker network inspect", "PIHOLE_CONTAINER_ID", 'ps -q "$PIHOLE_SERVICE"'):
+                    require(marker in start_step, f"Pi-hole pre-start safety or container discovery is missing: {marker}")
+                for marker in ("PIHOLE_START_NETWORK_MODE", ".network_mode", 'test "$PIHOLE_START_NETWORK_MODE" = "$PIHOLE_NETWORK_MODE"', "host)", 'test ! -s "$PIHOLE_NETWORK_REPORT"', "network_mode:none", "unverified-network-namespace", "''|bridge)"):
+                    require(marker in start_step, f"Pi-hole pre-start network-mode recheck is missing: {marker}")
+                require(start_step.index("PIHOLE_START_BLOCKERS") < start_step.index(" up -d"), "Pi-hole dependencies must be rechecked before startup")
+                require(start_step.index("PIHOLE_START_NETWORK_MODE") < start_step.index(" up -d"), "Pi-hole network mode must be re-derived before startup")
+                require("docker volume create" not in commands and "docker network create" not in commands and "mkdir" not in commands, "Pi-hole verification must not create missing recovery dependencies")
+                health_step = "\n".join(sections_by_heading[pihole_recovery_headings[4]]["paragraphs"])
+                for marker in ('ps --status running -q "$PIHOLE_SERVICE"', "RestartCount", "PIHOLE_RESTARTS_BEFORE", "PIHOLE_RESTARTS_AFTER", ".State.Health", "healthy"):
+                    require(marker in health_step, f"Pi-hole container health verification is missing: {marker}")
+                dns_step = "\n".join(sections_by_heading[pihole_recovery_headings[5]]["paragraphs"])
+                for marker in ("PIHOLE_DNS_PUBLICATION", "PIHOLE_DNS_HOST", "PIHOLE_DNS_PORT", "Publishers", "TargetPort == 53", "HostConfig.NetworkMode", "ss -lunt", 'dig @"$PIHOLE_DNS_HOST"', 'nslookup example.com "$PIHOLE_DNS_HOST"', "example.com"):
+                    require(marker in dns_step, f"Pi-hole local DNS verification is missing: {marker}")
+                admin_step = "\n".join(sections_by_heading[pihole_recovery_headings[6]]["paragraphs"])
+                for marker in ("PIHOLE_CONTAINER_ID", "PIHOLE_WEB_PUBLICATION", "Publishers", "TargetPort", "PublishedPort", "PIHOLE_WEB_HOST_PORT", "HostConfig.NetworkMode", "ExposedPorts", "NetworkSettings.Networks", "PIHOLE_ADMIN_URL", "PIHOLE_HTTP_STATUS"):
+                    require(marker in admin_step, f"Pi-hole administrative interface verification is missing: {marker}")
+                require(admin_step.index("PIHOLE_WEB_PUBLICATION") < admin_step.index("HostConfig.NetworkMode") < admin_step.index("NetworkSettings.Networks"), "Pi-hole administrative endpoint discovery must prefer publication, then host mode, then container networking")
+                require('PIHOLE_WEB_ENDPOINT_PORT=$PIHOLE_WEB_HOST_PORT' in admin_step, "Pi-hole administrative verification must support host ports that differ from container ports")
+                require("2[0-9]{2}|3[0-9]{2}|401|403" in admin_step, "Pi-hole administrative verification must allow only success, redirect, and authentication-related responses")
+                require("404 means the administrative endpoint was not proven" in admin_step and "-lt 500" not in admin_step, "Pi-hole administrative verification must reject arbitrary 404 responses")
+                require("non-mutating availability check" in admin_step, "Pi-hole administrative verification must remain non-mutating")
+                require("without logging in" in admin_step and "without logging in or exposing a password" in admin_step, "Pi-hole administrative verification must remain unauthenticated and secret-safe")
+                upstream_step = "\n".join(sections_by_heading[pihole_recovery_headings[7]]["paragraphs"])
+                upstream_command = sections_by_heading[pihole_recovery_headings[7]]["paragraphs"][1]
+                for marker in ("PIHOLE_DNS_HOST", "PIHOLE_DNS_PORT", 'dig @"$PIHOLE_DNS_HOST"', 'nslookup example.com "$PIHOLE_DNS_HOST"', "example.com"):
+                    require(marker in upstream_step, f"Pi-hole host-side upstream verification is missing: {marker}")
+                require("exec -T" not in upstream_command and "sh -c" not in upstream_command, "Pi-hole upstream verification must not require container diagnostic utilities")
+                require("install packages" in upstream_step and "Do not install tools in the container" in upstream_step, "Pi-hole upstream verification must prohibit container mutation")
+                for hardcoded_resolver in ("8.8.8.8", "1.1.1.1", "9.9.9.9"):
+                    require(hardcoded_resolver not in upstream_step, f"Pi-hole Recovery must not hardcode upstream resolver {hardcoded_resolver}")
+                manual_step = "\n".join(sections_by_heading[pihole_recovery_headings[8]]["paragraphs"])
+                for marker in ("expected blocklists", "expected local DNS records", "expected DHCP configuration", "expected client query activity"):
+                    require(marker in manual_step, f"Pi-hole manual validation is missing: {marker}")
+                completion_step = "\n".join(sections_by_heading[pihole_recovery_headings[9]]["paragraphs"])
+                completion_command = sections_by_heading[pihole_recovery_headings[9]]["paragraphs"][1]
+                require("dependable local DNS has been restored" in completion_step and "later application recovery may continue" in completion_step, "Pi-hole Recovery completion statement is incomplete")
+                require("PIHOLE_DNS_HOST" in completion_step and "PIHOLE_DNS_PORT" in completion_step, "Pi-hole completion must reuse the discovered host-side DNS listener")
+                require("exec -T" not in completion_command and "sh -c" not in completion_command, "Pi-hole completion must not require diagnostic utilities inside the container")
+                for forbidden_identity in ("container name", "PIHOLE_CONTAINER_NAME"):
+                    require(forbidden_identity not in commands, f"Pi-hole Recovery must not depend on generated container identity: {forbidden_identity}")
+                require(commands.count("config --format json") == commands.count("config --format json | jq"), "Pi-hole resolved Compose data must be filtered rather than displayed")
+                for unsafe_output in ("printenv", "Config.Env", "cat .env", "cat /run/secrets", "docker compose config >", "docker compose config |"):
+                    require(unsafe_output not in commands, f"Pi-hole Recovery must not display protected content: {unsafe_output}")
             continue
         require(entry.get("summary") == placeholder_paragraphs[0], f"Guide summary is not the Recovery Center placeholder: {entry.get('id')}")
         require(
