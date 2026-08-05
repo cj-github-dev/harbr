@@ -420,8 +420,115 @@
         }
       ]
     },
-    {
-      "id": "restore-guide",
+      {
+        "id": "pihole-recovery",
+        "title": "Pi-hole Recovery",
+        "summary": "Restore Pi-hole and verify that dependable local DNS is operational.",
+        "sections": [
+          {
+            "heading": "1. Locate the Pi-hole Compose project",
+            "paragraphs": [
+              "Required operator action: Open one dedicated recovery shell and use it through step 10. Discover restored Compose definitions under /srv/docker, select from the constrained list only when multiple definitions identify a Pi-hole service, and retain the derived non-secret project, service, network, and mount context. Do not rely on generated container names or display resolved environment values.",
+              "Verification command: mapfile -t PIHOLE_COMPOSE_CANDIDATES < <(while IFS= read -r candidate; do if docker compose -f \"$candidate\" config --format json | jq -e '.services | to_entries[] | select(((.key + \" \" + (.value.image // \"\")) | ascii_downcase) | contains(\"pihole\"))' > /dev/null; then printf '%s\\n' \"$candidate\"; fi; done < <(find /srv/docker -type f \\( -name 'compose.yml' -o -name 'compose.yaml' -o -name 'docker-compose.yml' -o -name 'docker-compose.yaml' \\) -print | sort)) && ((${#PIHOLE_COMPOSE_CANDIDATES[@]})) && if ((${#PIHOLE_COMPOSE_CANDIDATES[@]} == 1)); then PIHOLE_COMPOSE_FILE=${PIHOLE_COMPOSE_CANDIDATES[0]}; else printf 'Select the protected Pi-hole Compose definition:\\n'; select PIHOLE_COMPOSE_FILE in \"${PIHOLE_COMPOSE_CANDIDATES[@]}\"; do test -n \"$PIHOLE_COMPOSE_FILE\" && break; done; fi && PIHOLE_PROJECT_DIR=$(dirname -- \"$PIHOLE_COMPOSE_FILE\") && docker compose -f \"$PIHOLE_COMPOSE_FILE\" config --quiet && PIHOLE_PROJECT_NAME=$(docker compose -f \"$PIHOLE_COMPOSE_FILE\" config --format json | jq -r '.name') && mapfile -t PIHOLE_SERVICE_CANDIDATES < <(docker compose -f \"$PIHOLE_COMPOSE_FILE\" config --format json | jq -r '.services | to_entries[] | select(((.key + \" \" + (.value.image // \"\")) | ascii_downcase) | contains(\"pihole\")) | .key') && ((${#PIHOLE_SERVICE_CANDIDATES[@]})) && if ((${#PIHOLE_SERVICE_CANDIDATES[@]} == 1)); then PIHOLE_SERVICE=${PIHOLE_SERVICE_CANDIDATES[0]}; else printf 'Select the Pi-hole service from the discovered services:\\n'; select PIHOLE_SERVICE in \"${PIHOLE_SERVICE_CANDIDATES[@]}\"; do test -n \"$PIHOLE_SERVICE\" && break; done; fi && PIHOLE_MOUNT_REPORT=$(mktemp) && chmod 600 \"$PIHOLE_MOUNT_REPORT\" && docker compose -f \"$PIHOLE_COMPOSE_FILE\" config --format json | jq -r --arg project \"$PIHOLE_PROJECT_NAME\" --arg service \"$PIHOLE_SERVICE\" '. as $config | ($config.services[$service].volumes // [])[] | . as $mount | [$service, $mount.type, (if $mount.type == \"volume\" then ($config.volumes[$mount.source].name // ($project + \"_\" + $mount.source)) else ($mount.source // \"\") end), $mount.target] | @tsv' > \"$PIHOLE_MOUNT_REPORT\" && test -s \"$PIHOLE_MOUNT_REPORT\" && printf 'Project: %s\\nService: %s\\nRestricted mount report: %s\\nKeep this shell open through step 10.\\n' \"$PIHOLE_PROJECT_NAME\" \"$PIHOLE_SERVICE\" \"$PIHOLE_MOUNT_REPORT\"",
+              "Expected successful result: A protected Compose definition containing a Pi-hole service is selected or uniquely discovered, Compose validates it without starting services, and the same shell retains its derived project, service, and persistent-mount context without revealing secrets or environment values.",
+              "If verification fails: Confirm the Pi-hole project was restored beneath /srv/docker, inspect protected recovery evidence for the correct Compose definition, verify Docker Compose and jq are available, and confirm the definition identifies Pi-hole and declares its persistent mounts. Do not use currently running containers as authoritative recovery evidence.",
+              "Blocks recovery: Yes. Pi-hole recovery cannot continue without a valid restored Compose definition, an identified Pi-hole service, and declared persistent storage."
+            ]
+          },
+          {
+            "heading": "2. Verify required persistent data exists",
+            "paragraphs": [
+              "Required operator action: Verify every Compose-derived Pi-hole bind source and named volume exists before startup. Restore every missing item from protected recovery material; do not create empty replacements and do not allow Compose to initialize clean state over missing recovery data.",
+              "Verification command: PIHOLE_MISSING_DATA=() && while IFS=$'\\t' read -r service type source target; do case \"$type\" in bind) if ! test -e \"$source\" || ! test -r \"$source\"; then PIHOLE_MISSING_DATA+=(\"bind:$source\"); else stat --format='%U:%G %a %n' \"$source\"; fi ;; volume) if ! docker volume inspect \"$source\" > /dev/null 2>&1; then PIHOLE_MISSING_DATA+=(\"volume:$source\"); fi ;; esac; done < \"$PIHOLE_MOUNT_REPORT\" && if ((${#PIHOLE_MISSING_DATA[@]})); then printf 'Missing required Pi-hole persistent data:\\n' >&2; printf '  %s\\n' \"${PIHOLE_MISSING_DATA[@]}\" >&2; false; fi",
+              "Expected successful result: Every expected bind source exists and is readable, every Compose-defined named volume already exists, and the missing-data list is empty without displaying protected file contents.",
+              "If verification fails: Restore every listed bind source or named volume from protected Pi-hole recovery material, then rerun this step. Check mount availability, ownership, modes, ACLs, and archive completeness. Do not create an empty directory or volume merely to satisfy the check.",
+              "Blocks recovery: Yes. Pi-hole must not start while any required persistent directory, file, or named volume is absent."
+            ]
+          },
+          {
+            "heading": "3. Verify required Docker networks",
+            "paragraphs": [
+              "Required operator action: Derive the Pi-hole service networks from the selected Compose definition and verify every resolved external or internal network already exists. Restore or create a missing network according to protected platform evidence before continuing; this verification does not mutate Docker state.",
+              "Verification command: PIHOLE_NETWORK_REPORT=$(mktemp) && chmod 600 \"$PIHOLE_NETWORK_REPORT\" && docker compose -f \"$PIHOLE_COMPOSE_FILE\" config --format json | jq -r --arg project \"$PIHOLE_PROJECT_NAME\" --arg service \"$PIHOLE_SERVICE\" '. as $config | (($config.services[$service].networks // {\"default\": null}) | keys[]) as $key | ($config.networks[$key].name // ($project + \"_\" + $key))' > \"$PIHOLE_NETWORK_REPORT\" && PIHOLE_MISSING_NETWORKS=() && while read -r network; do if ! docker network inspect \"$network\" > /dev/null 2>&1; then PIHOLE_MISSING_NETWORKS+=(\"$network\"); fi; done < \"$PIHOLE_NETWORK_REPORT\" && if ((${#PIHOLE_MISSING_NETWORKS[@]})); then printf 'Missing required Pi-hole networks:\\n' >&2; printf '  %s\\n' \"${PIHOLE_MISSING_NETWORKS[@]}\" >&2; false; fi",
+              "Expected successful result: The restricted report contains the resolved networks required by the Pi-hole service, every network can be inspected, and the missing-network list is empty.",
+              "If verification fails: Use protected Docker Platform and Compose evidence to restore or create each listed network with its intended driver, scope, addressing, and external status, then rerun the non-mutating check. Do not guess network settings.",
+              "Blocks recovery: Yes. Pi-hole must not start until every required Docker network exists with the protected configuration."
+            ]
+          },
+          {
+            "heading": "4. Start the Pi-hole stack",
+            "paragraphs": [
+              "Required operator action: In the same recovery shell, start only the selected Pi-hole Compose project after the persistent-data and network checks pass. Recheck both immediately before startup so Compose cannot create replacement empty storage or unintended networks. Never depend on generated container names.",
+              "Verification command: PIHOLE_START_BLOCKERS=() && while IFS=$'\\t' read -r service type source target; do case \"$type\" in bind) test -e \"$source\" && test -r \"$source\" || PIHOLE_START_BLOCKERS+=(\"bind:$source\") ;; volume) docker volume inspect \"$source\" > /dev/null 2>&1 || PIHOLE_START_BLOCKERS+=(\"volume:$source\") ;; esac; done < \"$PIHOLE_MOUNT_REPORT\" && while read -r network; do docker network inspect \"$network\" > /dev/null 2>&1 || PIHOLE_START_BLOCKERS+=(\"network:$network\"); done < \"$PIHOLE_NETWORK_REPORT\" && if ((${#PIHOLE_START_BLOCKERS[@]})); then printf 'Pi-hole startup blocked by missing recovery dependencies:\\n' >&2; printf '  %s\\n' \"${PIHOLE_START_BLOCKERS[@]}\" >&2; false; fi && docker compose -f \"$PIHOLE_COMPOSE_FILE\" up -d && PIHOLE_CONTAINER_ID=$(docker compose -f \"$PIHOLE_COMPOSE_FILE\" ps -q \"$PIHOLE_SERVICE\") && test -n \"$PIHOLE_CONTAINER_ID\"",
+              "Expected successful result: All restored storage and network dependencies pass the immediate recheck, Docker Compose starts only the selected project, and Compose returns a container ID for the discovered Pi-hole service without requiring its generated name.",
+              "If verification fails: Restore every listed dependency before retrying. If dependencies pass but startup fails, check the selected Compose definition, image availability, port conflicts, mount permissions, container status, and restricted project logs without printing environment values or credentials.",
+              "Blocks recovery: Yes. DNS verification cannot begin until the restored Pi-hole service starts from protected persistent data on the expected networks."
+            ]
+          },
+          {
+            "heading": "5. Verify container health",
+            "paragraphs": [
+              "Required operator action: Verify the Compose-discovered Pi-hole container is running, does not enter a restart loop, and reports healthy when its image defines a health check. Do not inspect or print container environment values.",
+              "Verification command: PIHOLE_CONTAINER_ID=$(docker compose -f \"$PIHOLE_COMPOSE_FILE\" ps --status running -q \"$PIHOLE_SERVICE\") && test -n \"$PIHOLE_CONTAINER_ID\" && PIHOLE_RESTARTS_BEFORE=$(docker inspect --format '{{.RestartCount}}' \"$PIHOLE_CONTAINER_ID\") && sleep 5 && PIHOLE_RESTARTS_AFTER=$(docker inspect --format '{{.RestartCount}}' \"$PIHOLE_CONTAINER_ID\") && test \"$PIHOLE_RESTARTS_BEFORE\" = \"$PIHOLE_RESTARTS_AFTER\" && PIHOLE_HEALTH=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' \"$PIHOLE_CONTAINER_ID\") && ( test -z \"$PIHOLE_HEALTH\" || test \"$PIHOLE_HEALTH\" = healthy )",
+              "Expected successful result: Compose identifies the running Pi-hole container, its restart count remains stable during the observation interval, and its health state is healthy when a health check exists.",
+              "If verification fails: Review container state and restricted Pi-hole logs, then check restored data, port conflicts, network attachment, resource limits, image compatibility, and health-check output. Never print the container environment or credentials while diagnosing.",
+              "Blocks recovery: Yes. An absent, restarting, stopped, or unhealthy Pi-hole service cannot provide dependable DNS."
+            ]
+          },
+          {
+            "heading": "6. Verify DNS service",
+            "paragraphs": [
+              "Required operator action: Confirm the host is listening on DNS port 53 and Pi-hole answers a local query for a well-known public domain. Use dig when available or nslookup as the fallback; do not alter resolver configuration during verification.",
+              "Verification command: PIHOLE_DNS_BINDINGS=$(docker compose -f \"$PIHOLE_COMPOSE_FILE\" ps --format json | jq -r --arg service \"$PIHOLE_SERVICE\" '.[] | select(.Service == $service) | (.Publishers // [])[] | select(.TargetPort == 53) | (.PublishedPort | tostring)') && PIHOLE_NETWORK_MODE=$(docker inspect --format '{{.HostConfig.NetworkMode}}' \"$PIHOLE_CONTAINER_ID\") && if test -n \"$PIHOLE_DNS_BINDINGS\"; then grep -qx 53 <<< \"$PIHOLE_DNS_BINDINGS\"; else test \"$PIHOLE_NETWORK_MODE\" = host; fi && ss -lunt | awk '$5 ~ /:53$/ { found=1 } END { exit !found }' && if command -v dig > /dev/null; then test -n \"$(dig @127.0.0.1 example.com A +short +time=3 +tries=1)\"; elif command -v nslookup > /dev/null; then nslookup example.com 127.0.0.1 > /dev/null; else printf '%s\\n' 'Install the Debian dnsutils package for dig or provide nslookup, then rerun verification.' >&2; false; fi",
+              "Expected successful result: Runtime metadata proves the discovered Pi-hole service publishes DNS on host port 53 or intentionally uses host networking, a TCP or UDP listener is present on port 53, and a direct query to the local Pi-hole resolver returns an address for example.com.",
+              "If verification fails: Check port publishing or host-network mode in the protected Compose definition, port conflicts, firewall policy, Pi-hole service logs, resolver readiness, and whether dig or nslookup is installed. Do not change DNS configuration merely to make the test pass.",
+              "Blocks recovery: Yes. Local DNS is not restored until Pi-hole listens on port 53 and answers a practical resolution query."
+            ]
+          },
+          {
+            "heading": "7. Verify administrative interface",
+            "paragraphs": [
+              "Required operator action: Discover a Pi-hole web port and container address from Docker metadata, then verify the administrative interface responds without logging in or exposing a password, token, credential, or environment value.",
+              "Verification command: PIHOLE_WEB_PORT=$(docker inspect \"$PIHOLE_CONTAINER_ID\" | jq -r '.[0].Config.ExposedPorts // {} | keys[] | split(\"/\")[0] | select(. == \"80\" or . == \"443\")' | sort -n | head -n 1) && test -n \"$PIHOLE_WEB_PORT\" && PIHOLE_CONTAINER_IP=$(docker inspect \"$PIHOLE_CONTAINER_ID\" | jq -r '.[0].NetworkSettings.Networks | to_entries[0].value.IPAddress') && test -n \"$PIHOLE_CONTAINER_IP\" && if test \"$PIHOLE_WEB_PORT\" = 443; then PIHOLE_ADMIN_URL=\"https://$PIHOLE_CONTAINER_IP/admin/\"; PIHOLE_HTTP_STATUS=$(curl --insecure --silent --show-error --output /dev/null --write-out '%{http_code}' \"$PIHOLE_ADMIN_URL\"); else PIHOLE_ADMIN_URL=\"http://$PIHOLE_CONTAINER_IP:$PIHOLE_WEB_PORT/admin/\"; PIHOLE_HTTP_STATUS=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \"$PIHOLE_ADMIN_URL\"); fi && test \"$PIHOLE_HTTP_STATUS\" -ge 200 && test \"$PIHOLE_HTTP_STATUS\" -lt 500",
+              "Expected successful result: Docker metadata supplies a reachable container address and HTTP or HTTPS port, and the unauthenticated administrative endpoint returns an HTTP response below 500 without requesting or displaying credentials.",
+              "If verification fails: Check the Pi-hole container state, web-port exposure, network attachment, interface path, web-service logs, and local firewall reachability. Do not reveal or reset the administrative password during this availability check.",
+              "Blocks recovery: Yes. The operational console must respond before Pi-hole recovery can be validated manually."
+            ]
+          },
+          {
+            "heading": "8. Verify upstream DNS functionality",
+            "paragraphs": [
+              "Required operator action: Verify from inside the Compose-discovered Pi-hole service that an external domain resolves through its restored upstream configuration. Do not hardcode an upstream provider and do not print DNS credentials or environment values.",
+              "Verification command: docker compose -f \"$PIHOLE_COMPOSE_FILE\" exec -T \"$PIHOLE_SERVICE\" sh -c 'if command -v dig > /dev/null; then test -n \"$(dig @127.0.0.1 example.com A +short +time=3 +tries=1)\"; elif command -v nslookup > /dev/null; then nslookup example.com 127.0.0.1 > /dev/null; else exit 1; fi'",
+              "Expected successful result: A DNS query originating inside the restored Pi-hole service and directed to Pi-hole itself resolves example.com through the service's configured upstream path without naming or overriding a provider.",
+              "If verification fails: Check upstream reachability, restored Pi-hole resolver settings through protected evidence, Docker networking, host Internet access, firewall rules, and restricted service logs. Do not print environment variables, credentials, or tokens while diagnosing.",
+              "Blocks recovery: Yes. Pi-hole cannot provide dependable external resolution while its configured upstream path fails."
+            ]
+          },
+          {
+            "heading": "9. Complete manual validation",
+            "paragraphs": [
+              "Required operator action: In the responding Pi-hole interface, manually confirm the expected blocklists are loaded, expected local DNS records are present, expected DHCP configuration is restored when Pi-hole provides DHCP, and expected client query activity is visible. Use protected recovery evidence for comparison and do not expose passwords, API tokens, or DNS credentials.",
+              "Verification command: printf '%s\\n' 'Manual Pi-hole validation required:' '  - expected blocklists loaded' '  - expected local DNS records present' '  - expected DHCP configuration confirmed when Pi-hole provides DHCP' '  - expected client query activity visible'",
+              "Expected successful result: The operator records confirmation of all four expected outcomes against protected evidence, marking DHCP explicitly not applicable only when Pi-hole is not the environment's DHCP provider.",
+              "If verification fails: Return to protected Pi-hole data restoration, confirm the selected recovery point, inspect application behavior without exposing secrets, and keep every missing list, record, DHCP setting, or expected client query documented as a blocker.",
+              "Blocks recovery: Yes. Automatic service checks do not replace manual confirmation of restored operational DNS policy and expected client behavior."
+            ]
+          },
+          {
+            "heading": "10. Confirm Pi-hole recovery is complete",
+            "paragraphs": [
+              "Required operator action: Proceed only after steps 1 through 9 pass, including every manual confirmation. Recheck local and upstream resolution, then record that dependable local DNS is restored and later application recovery may continue.",
+              "Verification command: test -n \"$(docker compose -f \"$PIHOLE_COMPOSE_FILE\" ps --status running -q \"$PIHOLE_SERVICE\")\" && if command -v dig > /dev/null; then test -n \"$(dig @127.0.0.1 example.com A +short +time=3 +tries=1)\"; else nslookup example.com 127.0.0.1 > /dev/null; fi && docker compose -f \"$PIHOLE_COMPOSE_FILE\" exec -T \"$PIHOLE_SERVICE\" sh -c 'if command -v dig > /dev/null; then test -n \"$(dig @127.0.0.1 example.com A +short +time=3 +tries=1)\"; else nslookup example.com 127.0.0.1 > /dev/null; fi' && printf '%s\\n' 'Pi-hole recovery complete: dependable local DNS has been restored; later application recovery may continue.'",
+              "Expected successful result: The Pi-hole service remains running, local and in-container external resolution both succeed, all manual validations are complete, and the command states that dependable local DNS has been restored.",
+              "If verification fails: Return to the failed container, local DNS, interface, upstream DNS, persistent-data, network, or manual-validation step. Do not authorize later application recovery while any DNS blocker remains.",
+              "Blocks recovery: Yes. Later application recovery must wait until dependable local DNS and required manual Pi-hole state are fully validated."
+            ]
+          }
+        ]
+      },
+      {
+        "id": "restore-guide",
       "title": "Restore Guide",
       "summary": "This operational recovery procedure is being developed.",
       "sections": [{"heading": "Recovery Center", "paragraphs": ["This operational recovery procedure is being developed.", "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation."]}]
