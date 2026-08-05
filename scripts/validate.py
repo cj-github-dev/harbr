@@ -422,21 +422,33 @@ def validate_documentation() -> None:
                 for marker in ('ps --status running -q "$PIHOLE_SERVICE"', "RestartCount", "PIHOLE_RESTARTS_BEFORE", "PIHOLE_RESTARTS_AFTER", ".State.Health", "healthy"):
                     require(marker in health_step, f"Pi-hole container health verification is missing: {marker}")
                 dns_step = "\n".join(sections_by_heading[pihole_recovery_headings[5]]["paragraphs"])
-                for marker in ("PIHOLE_DNS_BINDINGS", "Publishers", "TargetPort == 53", "HostConfig.NetworkMode", "ss -lunt", ":53$", "dig @127.0.0.1", "nslookup example.com 127.0.0.1", "example.com"):
+                for marker in ("PIHOLE_DNS_PUBLICATION", "PIHOLE_DNS_HOST", "PIHOLE_DNS_PORT", "Publishers", "TargetPort == 53", "HostConfig.NetworkMode", "ss -lunt", 'dig @"$PIHOLE_DNS_HOST"', 'nslookup example.com "$PIHOLE_DNS_HOST"', "example.com"):
                     require(marker in dns_step, f"Pi-hole local DNS verification is missing: {marker}")
                 admin_step = "\n".join(sections_by_heading[pihole_recovery_headings[6]]["paragraphs"])
-                for marker in ("PIHOLE_CONTAINER_ID", "ExposedPorts", "NetworkSettings.Networks", "PIHOLE_ADMIN_URL", "PIHOLE_HTTP_STATUS"):
+                for marker in ("PIHOLE_CONTAINER_ID", "PIHOLE_WEB_PUBLICATION", "Publishers", "TargetPort", "PublishedPort", "PIHOLE_WEB_HOST_PORT", "HostConfig.NetworkMode", "ExposedPorts", "NetworkSettings.Networks", "PIHOLE_ADMIN_URL", "PIHOLE_HTTP_STATUS"):
                     require(marker in admin_step, f"Pi-hole administrative interface verification is missing: {marker}")
-                require("logging in" in admin_step and "without requesting or displaying credentials" in admin_step, "Pi-hole administrative verification must remain unauthenticated and secret-safe")
+                require(admin_step.index("PIHOLE_WEB_PUBLICATION") < admin_step.index("HostConfig.NetworkMode") < admin_step.index("NetworkSettings.Networks"), "Pi-hole administrative endpoint discovery must prefer publication, then host mode, then container networking")
+                require('PIHOLE_WEB_ENDPOINT_PORT=$PIHOLE_WEB_HOST_PORT' in admin_step, "Pi-hole administrative verification must support host ports that differ from container ports")
+                require("2[0-9]{2}|3[0-9]{2}|401|403" in admin_step, "Pi-hole administrative verification must allow only success, redirect, and authentication-related responses")
+                require("404 means the administrative endpoint was not proven" in admin_step and "-lt 500" not in admin_step, "Pi-hole administrative verification must reject arbitrary 404 responses")
+                require("non-mutating availability check" in admin_step, "Pi-hole administrative verification must remain non-mutating")
+                require("without logging in" in admin_step and "without logging in or exposing a password" in admin_step, "Pi-hole administrative verification must remain unauthenticated and secret-safe")
                 upstream_step = "\n".join(sections_by_heading[pihole_recovery_headings[7]]["paragraphs"])
-                require('exec -T "$PIHOLE_SERVICE"' in upstream_step and "@127.0.0.1 example.com" in upstream_step, "Pi-hole upstream DNS verification must query Pi-hole through the discovered service")
+                upstream_command = sections_by_heading[pihole_recovery_headings[7]]["paragraphs"][1]
+                for marker in ("PIHOLE_DNS_HOST", "PIHOLE_DNS_PORT", 'dig @"$PIHOLE_DNS_HOST"', 'nslookup example.com "$PIHOLE_DNS_HOST"', "example.com"):
+                    require(marker in upstream_step, f"Pi-hole host-side upstream verification is missing: {marker}")
+                require("exec -T" not in upstream_command and "sh -c" not in upstream_command, "Pi-hole upstream verification must not require container diagnostic utilities")
+                require("install packages" in upstream_step and "Do not install tools in the container" in upstream_step, "Pi-hole upstream verification must prohibit container mutation")
                 for hardcoded_resolver in ("8.8.8.8", "1.1.1.1", "9.9.9.9"):
                     require(hardcoded_resolver not in upstream_step, f"Pi-hole Recovery must not hardcode upstream resolver {hardcoded_resolver}")
                 manual_step = "\n".join(sections_by_heading[pihole_recovery_headings[8]]["paragraphs"])
                 for marker in ("expected blocklists", "expected local DNS records", "expected DHCP configuration", "expected client query activity"):
                     require(marker in manual_step, f"Pi-hole manual validation is missing: {marker}")
                 completion_step = "\n".join(sections_by_heading[pihole_recovery_headings[9]]["paragraphs"])
+                completion_command = sections_by_heading[pihole_recovery_headings[9]]["paragraphs"][1]
                 require("dependable local DNS has been restored" in completion_step and "later application recovery may continue" in completion_step, "Pi-hole Recovery completion statement is incomplete")
+                require("PIHOLE_DNS_HOST" in completion_step and "PIHOLE_DNS_PORT" in completion_step, "Pi-hole completion must reuse the discovered host-side DNS listener")
+                require("exec -T" not in completion_command and "sh -c" not in completion_command, "Pi-hole completion must not require diagnostic utilities inside the container")
                 for forbidden_identity in ("container name", "PIHOLE_CONTAINER_NAME"):
                     require(forbidden_identity not in commands, f"Pi-hole Recovery must not depend on generated container identity: {forbidden_identity}")
                 require(commands.count("config --format json") == commands.count("config --format json | jq"), "Pi-hole resolved Compose data must be filtered rather than displayed")
