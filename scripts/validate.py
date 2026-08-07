@@ -574,18 +574,23 @@ def validate_documentation() -> None:
                 for marker in ("HOMEASSISTANT_NETWORK_MODE", "host)", "none)", "service:*|container:*)", "bridge)", "'')", "docker network inspect"):
                     require(marker in network_step, f"Home Assistant network-mode handling is missing: {marker}")
                 require('networks // {"default": null}' not in network_step and "Do not fabricate a default network" in network_step, "Home Assistant Recovery must not fabricate default networks")
+                for marker in (". as $config", "$config.services[$service].networks", "$config.networks[$key].name", '$config.name + "_" + $key', '$config.name + "_default"'):
+                    require(marker in network_step, f"Home Assistant explicit-network resolution does not retain root Compose context: {marker}")
                 start_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[5]]["paragraphs"])
                 require(commands.count(" up -d") == 1 and 'docker compose -f "$HOMEASSISTANT_COMPOSE_FILE" up -d' in start_step, "Home Assistant Recovery must contain exactly one scoped startup")
-                for marker in ("HOMEASSISTANT_START_BLOCKERS", "homeassistant_state_present", "homeassistant_runtime_present", "HOMEASSISTANT_HOST_REPORT", "HOMEASSISTANT_NETWORK_REPORT", "HOMEASSISTANT_CONTAINER_ID", 'ps -q "$HOMEASSISTANT_SERVICE"'):
+                for marker in ("HOMEASSISTANT_START_BLOCKERS", "homeassistant_state_present", "homeassistant_runtime_present", "HOMEASSISTANT_HOST_REPORT", "HOMEASSISTANT_NETWORK_REPORT", "HOMEASSISTANT_START_NETWORK_MODE", '.network_mode // ""', 'test "$HOMEASSISTANT_START_NETWORK_MODE" != "$HOMEASSISTANT_NETWORK_MODE"', "network-mode-changed", "HOMEASSISTANT_CONTAINER_ID", 'ps -q "$HOMEASSISTANT_SERVICE"'):
                     require(marker in start_step, f"Home Assistant pre-start recheck is missing: {marker}")
                 require(start_step.index("homeassistant_state_present") < start_step.index(" up -d"), "Home Assistant protected state must be rechecked before startup")
+                require(start_step.index("HOMEASSISTANT_START_NETWORK_MODE") < start_step.index(" up -d") and start_step.index("network-mode-changed") < start_step.index(" up -d"), "Home Assistant network mode must be re-derived and compared before startup")
                 availability_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[6]]["paragraphs"])
                 for marker in ("RestartCount", ".State.Health", "HOMEASSISTANT_NETWORK_MODE", "8123/tcp", "NetworkSettings.Networks", "manifest.json", "api/discovery_info", '.name == "Home Assistant"', ".version", '= 200'):
                     require(marker in availability_step, f"Home Assistant stability or endpoint verification is missing: {marker}")
                 require("arbitrary 2xx pages" in availability_step and "authentication responses" in availability_step, "Home Assistant endpoint verification must reject arbitrary HTTP success")
                 restored_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[7]]["paragraphs"])
-                for marker in ("api/onboarding", "all(.[]; .done == true)", ".Mounts", "version", "first-run onboarding", "initialization"):
+                for marker in ("api/onboarding", "all(.[]; .done == true)", ".Mounts", "version", "first-run onboarding", "initialization", "HOMEASSISTANT_INIT_LOG", "mktemp", "chmod 600", 'docker compose -f "$HOMEASSISTANT_COMPOSE_FILE" logs', "--since 15m", "--tail 200", "configuration", "recorder", "database", "migration", "fatal", "persistent"):
                     require(marker in restored_step, f"Home Assistant restored-state verification is missing: {marker}")
+                require('> "$HOMEASSISTANT_INIT_LOG" 2>&1' in restored_step, "Home Assistant scoped logs must be captured without printing")
+                require('cat "$HOMEASSISTANT_INIT_LOG"' not in restored_step and 'printf "$HOMEASSISTANT_INIT_LOG"' not in restored_step, "Home Assistant initialization logs must not be printed")
                 manual_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[8]]["paragraphs"])
                 for marker in ("dashboards", "users", "integrations", "automations", "scripts", "scenes", "devices", "entities", "notifications", "Nginx Proxy Manager", "representative automation"):
                     require(marker in manual_step, f"Home Assistant manual validation is missing: {marker}")
