@@ -587,10 +587,12 @@ def validate_documentation() -> None:
                     require(marker in availability_step, f"Home Assistant stability or endpoint verification is missing: {marker}")
                 require("arbitrary 2xx pages" in availability_step and "authentication responses" in availability_step, "Home Assistant endpoint verification must reject arbitrary HTTP success")
                 restored_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[7]]["paragraphs"])
-                for marker in ("api/onboarding", "all(.[]; .done == true)", ".Mounts", "version", "first-run onboarding", "initialization", "HOMEASSISTANT_INIT_LOG", "mktemp", "chmod 600", 'docker compose -f "$HOMEASSISTANT_COMPOSE_FILE" logs', "--since 15m", "--tail 200", "configuration", "recorder", "database", "migration", "fatal", "persistent"):
+                for marker in ("api/onboarding", "all(.[]; .done == true)", ".Mounts", "version", "first-run onboarding", "initialization", "HOMEASSISTANT_INIT_LOG", "mktemp", "chmod 600", 'docker compose -f "$HOMEASSISTANT_COMPOSE_FILE" logs', "--since 15m", "--tail 200", "configuration", "recorder", "sqlite", "database", "migration", "fatal", "! grep -Eiq"):
                     require(marker in restored_step, f"Home Assistant restored-state verification is missing: {marker}")
                 require('> "$HOMEASSISTANT_INIT_LOG" 2>&1' in restored_step, "Home Assistant scoped logs must be captured without printing")
                 require('cat "$HOMEASSISTANT_INIT_LOG"' not in restored_step and 'printf "$HOMEASSISTANT_INIT_LOG"' not in restored_step, "Home Assistant initialization logs must not be printed")
+                require("HOMEASSISTANT_PERSISTENT_INIT_FAILURES" not in restored_step and "-lt 3" not in restored_step, "Home Assistant initialization failures must not use an occurrence-count tolerance")
+                require("any narrowly matched initialization failure is present" in restored_step and "Ordinary warnings, unavailable integrations, and recoverable external-dependency errors do not block" in restored_step, "Home Assistant narrow initialization matches must block without treating ordinary dependency warnings as fatal")
                 manual_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[8]]["paragraphs"])
                 for marker in ("dashboards", "users", "integrations", "automations", "scripts", "scenes", "devices", "entities", "notifications", "Nginx Proxy Manager", "representative automation"):
                     require(marker in manual_step, f"Home Assistant manual validation is missing: {marker}")
