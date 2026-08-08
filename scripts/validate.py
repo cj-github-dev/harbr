@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import hashlib
 import runpy
+import struct
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -13,6 +14,7 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parents[1]
 API_SOURCE_ROOT = ROOT / "api" / "bootstrap" / "v1"
 HTML_PATH = ROOT / "ui" / "experience" / "index.html"
+MANIFEST_PATH = ROOT / "ui" / "experience" / "manifest.webmanifest"
 APP_PATH = ROOT / "ui" / "experience" / "app.js"
 REFERENCE_PATH = ROOT / "ui" / "experience" / "data" / "reference.json"
 RING_CONFIG_PATH = ROOT / "ui" / "experience" / "config" / "confidence-ring.json"
@@ -89,6 +91,55 @@ def validate_internal_resources() -> None:
         require(resource in html, f"Missing HTML resource link: {resource}")
         path = ROOT / "ui" / "experience" / resource.lstrip("/")
         require(path.is_file(), f"Missing UI resource: {resource}")
+
+
+def png_dimensions(path: Path) -> tuple[int, int]:
+    with path.open("rb") as handle:
+        header = handle.read(24)
+    require(header[:8] == b"\x89PNG\r\n\x1a\n", f"Invalid PNG icon: {path.name}")
+    require(header[12:16] == b"IHDR", f"PNG icon lacks IHDR: {path.name}")
+    return struct.unpack(">II", header[16:24])
+
+
+def validate_pwa_foundation() -> None:
+    require(MANIFEST_PATH.is_file(), "Missing Web App Manifest")
+    manifest = load_json(MANIFEST_PATH)
+    required_fields = {
+        "name",
+        "short_name",
+        "description",
+        "start_url",
+        "scope",
+        "display",
+        "background_color",
+        "theme_color",
+        "icons",
+    }
+    require(required_fields <= manifest.keys(), "Web App Manifest lacks required fields")
+    require(manifest["display"] == "standalone", "Web App Manifest display must be standalone")
+    require(manifest["start_url"] == "/", "Web App Manifest start_url must target the site root")
+    require(manifest["scope"] == "/", "Web App Manifest scope must target the site root")
+
+    icon_sizes = set()
+    for icon in manifest["icons"]:
+        require({"src", "sizes", "type"} <= icon.keys(), "Manifest icon lacks required fields")
+        parsed = urlparse(icon["src"])
+        require(not parsed.scheme and not parsed.netloc and icon["src"].startswith("/assets/"), f"Manifest icon is not local: {icon['src']}")
+        icon_path = ROOT / "ui" / "experience" / icon["src"].lstrip("/")
+        require(icon_path.is_file(), f"Missing manifest icon: {icon['src']}")
+        require(icon["type"] == "image/png", f"Manifest icon is not PNG: {icon['src']}")
+        dimensions = f"{png_dimensions(icon_path)[0]}x{png_dimensions(icon_path)[1]}"
+        require(dimensions in icon["sizes"].split(), f"Manifest icon dimensions do not match {icon['src']}")
+        icon_sizes.update(icon["sizes"].split())
+    require({"192x192", "512x512"} <= icon_sizes, "Manifest requires 192x192 and 512x512 icons")
+
+    html = HTML_PATH.read_text(encoding="utf-8")
+    require('rel="manifest" href="/manifest.webmanifest"' in html, "HTML does not reference the Web App Manifest")
+    apple_icon = "/assets/harbr-apple-touch-icon.png"
+    require(f'rel="apple-touch-icon" href="{apple_icon}"' in html, "HTML does not reference the Apple touch icon")
+    apple_icon_path = ROOT / "ui" / "experience" / apple_icon.lstrip("/")
+    require(apple_icon_path.is_file(), "Missing Apple touch icon")
+    require(png_dimensions(apple_icon_path) == (180, 180), "Apple touch icon must be 180x180")
 
 
 def validate_confidence_ring_config() -> None:
@@ -703,6 +754,7 @@ def validate_refresh_deployment() -> None:
 def main() -> None:
     validate_json()
     validate_internal_resources()
+    validate_pwa_foundation()
     validate_confidence_ring_config()
     validate_startup()
     validate_archives()
