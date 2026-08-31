@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "collector": { "name": "service-check", "version": "0.3.0" },
+  "generated_at": "2026-08-31T12:00:00-05:00",
+  "site": { "id": "LDF", "name": "Lac du Flambeau" },
+  "host": {
+    "id": "ldf-dockerhost",
+    "name": "dockerhost",
+    "observed_hostname": "dockerhost",
+    "management_ip": "192.0.2.1",
+    "role": "docker-host",
+    "status": "warning",
+    "uptime_seconds": 123456,
+    "os": { "name": "Debian GNU/Linux", "version": "12", "pretty_name": "Debian GNU/Linux 12 (bookworm)" },
+    "reboot_required": true,
+    "failed_systemd_units": [],
+    "package_updates": { "status": "healthy", "available": 0, "security": 0, "metadata_status": "fresh" },
+    "filesystems": [
+      { "id": "system-docker", "label": "System / Docker", "status": "healthy", "used_percent": 10 },
+      { "id": "storage", "label": "Storage", "status": "healthy", "used_percent": 4 }
+    ],
+    "docker": {
+      "daemon_status": "healthy",
+      "server_version": "28.3.3",
+      "compose_version": "2.39.1",
+      "registry_credentials": "private",
+      "projects": [
+        {
+          "id": "harbr", "name": "Harbr", "status": "healthy", "compose_directory": "/srv/docker/harbr",
+          "services": [
+            { "service_id": "harbr-experience", "name": "harbr-experience", "status": "healthy", "image": { "reference": "nginx:1.27-alpine", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" } },
+            { "service_id": "harbr-ring-lab", "name": "harbr-ring-lab", "status": "healthy", "image": { "reference": "nginx:1.27-alpine", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" } }
+          ]
+        },
+        {
+          "id": "homeassistant", "name": "Home Assistant", "status": "healthy", "compose_file": "/srv/docker/homeassistant/compose.yml",
+          "services": [
+            { "service_id": "homeassistant", "name": "homeassistant", "status": "healthy", "image": { "reference": "ghcr.io/home-assistant/home-assistant:stable", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" } }
+          ]
+        },
+        {
+          "id": "jellyfin", "name": "Jellyfin", "status": "healthy",
+          "services": [
+            { "service_id": "jellyfin", "name": "jellyfin", "status": "healthy", "image": { "reference": "jellyfin/jellyfin:latest", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" } }
+          ]
+        },
+        {
+          "id": "nginx-proxy-manager", "name": "Nginx Proxy Manager", "status": "warning",
+          "services": [
+            { "service_id": "db", "name": "npm-db", "status": "healthy", "image": { "reference": "mariadb:10.11", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "update_available", "image_id": "sha256:private" } },
+            { "service_id": "npm", "name": "nginx-p-m", "status": "healthy", "image": { "reference": "jc21/nginx-proxy-manager:latest", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" } }
+          ]
+        },
+        {
+          "id": "pihole", "name": "Pi-hole", "status": "healthy",
+          "services": [
+            { "service_id": "pihole", "name": "pihole", "status": "healthy", "image": { "reference": "pihole/pihole:latest", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" } }
+          ]
+        }
+      ]
+    },
+    "secret": "private"
+  },
+  "summary": { "containers": 7, "healthy_containers": 7, "image_updates": 1 }
+}

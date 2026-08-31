@@ -75,14 +75,22 @@ jq --argjson stale "$STALE_AFTER_SECONDS" '
       status: ((.status // "unknown") | sem), platform: ((.platform // null) | safe_string), model: ((.model // null) | safe_string),
       software_version: ((.software_version // null) | safe_string), uptime_seconds: (if (.uptime_seconds | type) == "number" then .uptime_seconds else null end),
       os: ((.os // null) | os), reboot_required: (if (.reboot_required | type) == "boolean" then .reboot_required else null end),
-      systemd: (if .systemd == null then null else {status: ((.systemd.status // "unknown") | sem), failed_units: (.systemd.failed_units // .systemd.failed_count // 0)} end),
+      systemd: (if .systemd != null then {status: ((.systemd.status // "unknown") | sem), failed_units: (.systemd.failed_units // .systemd.failed_count // 0)}
+        elif (.failed_systemd_units | type) == "array" then (.failed_systemd_units | length) as $failed |
+          {status: ((.systemd_status // (if $failed == 0 then "healthy" else "warning" end)) | sem), failed_units: $failed}
+        else null end),
       package_updates: (if .package_updates == null then null else (.package_updates.metadata_status // "unknown") as $metadata | {status: ((.package_updates.status // "unknown") | sem), available: (.package_updates.available // .package_updates.total // 0), security: (.package_updates.security // 0), metadata_status: (if $metadata == "fresh" or $metadata == "stale" then $metadata else "unknown" end)} end),
       filesystems: [(.filesystems // [])[] | {filesystem_id: (.filesystem_id // .id // .label), label: (.label // .name // .filesystem_id // .id), status: ((.status // "unknown") | sem), used_percent: (if (.used_percent | type) == "number" then .used_percent else null end)}],
       docker: ((.docker // null) | docker), virtualization: (if .virtualization == null then null else {status: ((.virtualization.status // "unknown") | sem), virtual_machines: [(.virtualization.virtual_machines // .virtualization.vms // [])[] | vm]} end),
       services: [(.services // [])[] | service] };
-  def sites_source: if (.sites | type) == "array" then .sites elif .site then [.site] elif .host then [{site_id:(.site_id // "unknown"), name:(.site_name // .site_id // "Unknown site"), status:(.status // .host.status // "unknown"), hosts:[.host]}] else [] end;
+  def sites_source:
+    if (.sites | type) == "array" then .sites
+    elif .site and .host then [{site_id:(.site.site_id // .site.id // .site.name), name:(.site.display_name // .site.name // .site.id), status:(.site.status // .host.status // "unknown"), hosts:[.host]}]
+    elif .site then [.site]
+    elif .host then [{site_id:(.site_id // "unknown"), name:(.site_name // .site_id // "Unknown site"), status:(.status // .host.status // "unknown"), hosts:[.host]}]
+    else [] end;
   { api_version: "v1", generated_at: (.generated_at // .checked_at // null), stale_after_seconds: $stale,
-    status: ((.status // "unknown") | sem), summary: {},
+    status: ((.status // .host.status // "unknown") | sem), summary: {},
     sites: [sites_source[] | {site_id:(.site_id // .id // .name), name:(.display_name // .name // .site_id // .id), status:((.status // "unknown") | sem), hosts:[(.hosts // [])[] | host]}] }
   | .summary = {
       sites:(.sites|length), hosts:([.sites[].hosts[]]|length),

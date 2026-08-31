@@ -25,6 +25,7 @@ mkdir -p \
   "$TEST_ROOT/api/bootstrap/v1" \
   "$TEST_ROOT/plugins/docker" \
   "$TEST_ROOT/plugins/service-check" \
+  "$TEST_ROOT/scripts/fixtures" \
   "$TEST_ROOT/scripts" \
   "$TEST_ROOT/state/recovery" \
   "$TEST_ROOT/state/sites" \
@@ -38,6 +39,7 @@ cp "$SOURCE_ROOT/state/recovery/prerequisites.json" "$TEST_ROOT/state/recovery/"
 cp "$SOURCE_ROOT/plugins/docker/refresh-api.sh" "$TEST_ROOT/plugins/docker/"
 cp "$SOURCE_ROOT/plugins/docker/generate-inventory.sh" "$TEST_ROOT/plugins/docker/"
 cp "$SOURCE_ROOT/plugins/service-check/generate-infrastructure.sh" "$TEST_ROOT/plugins/service-check/"
+cp "$SOURCE_ROOT/scripts/fixtures/service-check-v0.3.json" "$TEST_ROOT/scripts/fixtures/"
 cp "$SOURCE_ROOT/scripts/init-api.sh" "$TEST_ROOT/scripts/"
 
 cat > "$TEST_ROOT/backup.conf" <<'EOF'
@@ -118,23 +120,26 @@ jq -e '
   and any(.components[]; .detected.status == "missing" or .detected.status == "unavailable")
 ' "$TEST_ROOT/minimal-inventory.json" >/dev/null
 
-cat > "$TEST_ROOT/service-check.json" <<'EOF'
-{"generated_at":"2026-08-31T12:00:00-05:00","status":"warning","management_ip":"192.0.2.1","token":"private","sites":[{"site_id":"LDF","name":"Lac du Flambeau","status":"warning","hosts":[{"host_id":"ldf-dockerhost","name":"dockerhost","role":"docker-host","status":"warning","reboot_required":true,"docker":{"status":"healthy","daemon_status":"healthy","projects":[{"project_id":"nginx-proxy-manager","name":"Nginx Proxy Manager","status":"warning","compose_directory":"/private","services":[{"service_id":"db","name":"npm-db","display_name":"MariaDB","container_name":"npm-db","status":"healthy","image":{"reference":"mariadb:10.11","local_digest":"sha256:private-local","remote_digest":"sha256:private-remote","update_status":"update_available","image_id":"sha256:private-id"}},{"service_id":"npm","name":"nginx-p-m","display_name":"Nginx Proxy Manager","container_name":"nginx-p-m","status":"healthy","image":{"reference":"jc21/nginx-proxy-manager:latest","local_digest":"sha256:private-local","remote_digest":"sha256:private-remote","update_status":"current","image_id":"sha256:private-id"}}]}]}}]}]}
-EOF
+cp "$TEST_ROOT/scripts/fixtures/service-check-v0.3.json" "$TEST_ROOT/service-check.json"
 HARBR_ROOT="$TEST_ROOT" SERVICE_CHECK_SOURCE="$TEST_ROOT/service-check.json" \
   "$TEST_ROOT/plugins/service-check/generate-infrastructure.sh" "$TEST_ROOT/infrastructure-generated.json"
 jq -e '
   .status == "warning"
-  and .summary.image_updates == 1
-  and (.sites[0].hosts[0].docker.projects[0] | .status == "warning")
-  and (.sites[0].hosts[0].docker.projects[0].services[] | select(.service_id == "db") |
-    .name == "MariaDB" and .container_name == "npm-db" and .runtime_status == "healthy"
+  and (.sites[0] | .site_id == "LDF" and .status == "warning")
+  and (.sites[0].hosts[0] | .host_id == "ldf-dockerhost" and .status == "warning"
+    and .reboot_required == true and .systemd.status == "healthy" and .systemd.failed_units == 0
+    and .package_updates.available == 0 and .package_updates.security == 0)
+  and (.summary | .hosts == 1 and .services == 7 and .healthy_services == 7
+    and .warning_services == 0 and .failed_services == 0 and .image_updates == 1 and .reboots_required == 1)
+  and (.sites[0].hosts[0].docker.projects[] | select(.project_id == "nginx-proxy-manager") | .status == "warning")
+  and (.sites[0].hosts[0].docker.projects[].services[] | select(.service_id == "db") |
+    .name == "npm-db" and .runtime_status == "healthy"
     and .image == "mariadb:10.11" and .update_status == "update_available")
-  and (.sites[0].hosts[0].docker.projects[0].services[] | select(.service_id == "npm") |
-    .name == "Nginx Proxy Manager" and .container_name == "nginx-p-m" and .runtime_status == "healthy"
-    and .update_status == "current")
+  and (.sites[0].hosts[0].docker.projects[].services[] | select(.service_id == "npm") |
+    .name == "nginx-p-m" and .runtime_status == "healthy"
+    and .image == "jc21/nginx-proxy-manager:latest" and .update_status == "current")
 ' "$TEST_ROOT/infrastructure-generated.json" >/dev/null
-for forbidden in local_digest remote_digest image_id management_ip compose_directory token; do
+for forbidden in local_digest remote_digest image_id management_ip compose_directory compose_file secret credential; do
   ! grep -q "$forbidden" "$TEST_ROOT/infrastructure-generated.json"
 done
 cp "$TEST_ROOT/infrastructure-generated.json" "$TEST_ROOT/infrastructure-before.json"
