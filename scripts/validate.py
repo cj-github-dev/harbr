@@ -177,6 +177,7 @@ def validate_archives() -> None:
 def validate_documentation() -> None:
     reference = load_json(REFERENCE_PATH)
     require(reference.get("version") == "1.5", "Recovery Center reference version must be 1.5")
+    require(reference.get("updated_at") == "2026-08-31T14:23:29-05:00", "Recovery Center updated_at must use the actual Chicago-local timestamp")
     entries = reference.get("entries", [])
     ids = {entry.get("id") for entry in entries}
     host_recovery_id = "host-recovery-prerequisites"
@@ -201,9 +202,10 @@ def validate_documentation() -> None:
         "8. Install or verify Docker Engine and Docker Compose",
         "9. Select, verify, and preserve a backup set",
         "10. Restore host-level recovery configuration",
-        "11. Reload and verify restored host services",
-        "12. Verify collector, updater, inventory, state, and protected access",
-        "13. Hand off to Restore Harbr",
+        "11. Recreate the harbr-api identity boundary",
+        "12. Reload and verify restored host services",
+        "13. Verify collector, updater, inventory, state, and protected access",
+        "14. Hand off to Restore Harbr",
     ]
     restore_harbr_headings = [
         "1. Reconfirm the verified working backup set",
@@ -346,10 +348,20 @@ def validate_documentation() -> None:
                 host_config_step = "\n".join(sections_by_heading[host_recovery_headings[9]]["paragraphs"])
                 for marker in ("--numeric-owner", "--acls", "--xattrs", "/root/.config/rclone/rclone.conf"):
                     require(marker in host_config_step, f"Host Recovery disaster-recovery extraction is missing: {marker}")
-                services_step = "\n".join(sections_by_heading[host_recovery_headings[10]]["paragraphs"])
+                identity_step = "\n".join(sections_by_heading[host_recovery_headings[10]]["paragraphs"])
+                identity_command = sections_by_heading[host_recovery_headings[10]]["paragraphs"][1]
+                for marker in ("stat --format='%g' /var/lib/service-check/status.json", "getent group \"$ARCHIVED_HARBR_GID\"", "groupadd --gid", "usermod --append --groups harbr-api chris", "sudo -u chris -g harbr-api test -r"):
+                    require(marker in identity_step, f"Host Recovery harbr-api reconstruction is missing: {marker}")
+                for forbidden in ("groupadd harbr-api", "chmod", "chgrp"):
+                    require(forbidden not in identity_command, f"Host Recovery harbr-api reconstruction uses an unsafe shortcut: {forbidden}")
+                require("test -z \"$GID_OWNER\" || test \"$GID_OWNER\" = harbr-api" in identity_step, "Host Recovery must block incompatible archived-GID collisions")
+                services_step = "\n".join(sections_by_heading[host_recovery_headings[11]]["paragraphs"])
                 for unit in ("docker-backup.timer", "service-check.timer", "harbr-infrastructure.service", "harbr-api-refresh.service"):
                     require(unit in services_step, f"Host Recovery service verification is missing: {unit}")
                 require("do not start service-check" in services_step.lower(), "Host Recovery must defer service-check until Harbr exists")
+                updater_step = "\n".join(sections_by_heading[host_recovery_headings[12]]["paragraphs"])
+                require("service-update --help" in updater_step and "service-update v0.4.0" in updater_step, "Host Recovery must verify service-update with its supported help command")
+                require("service-update --version" not in updater_step, "Host Recovery must not invoke unsupported service-update --version")
             elif is_restore_harbr:
                 require(entry.get("summary") == "Restore Harbr and verify that the recovery console is operational.", "Restore Harbr has the wrong summary")
                 application_step = "\n".join(sections_by_heading[restore_harbr_headings[1]]["paragraphs"])
@@ -359,8 +371,9 @@ def validate_documentation() -> None:
                 evidence_step = "\n".join(sections_by_heading[restore_harbr_headings[5]]["paragraphs"])
                 require("do not infer or calculate confidence" in evidence_step, "Restore Harbr must preserve explicit evidence states")
                 infrastructure_step = "\n".join(sections_by_heading[restore_harbr_headings[6]]["paragraphs"])
-                for marker in ("/usr/local/sbin/service-check", "/var/lib/service-check/status.json", "harbr-infrastructure.service", "api/v1/infrastructure.json", "stale_after_seconds == 32400", "warning"):
+                for marker in ("systemctl start service-check.service", "PRIVATE_BEFORE", "PUBLIC_BEFORE", "PRIVATE_AFTER", "PUBLIC_AFTER", "/var/lib/service-check/status.json", "harbr-infrastructure.service", "api/v1/infrastructure.json", "stale_after_seconds == 32400", "warning"):
                     require(marker in infrastructure_step, f"Restore Harbr fresh Infrastructure verification is missing: {marker}")
+                require("sudo /usr/local/sbin/service-check" not in infrastructure_step, "Restore Harbr must run service-check through systemd OnSuccess")
                 guidance_step = "\n".join(sections_by_heading[restore_harbr_headings[8]]["paragraphs"])
                 for marker in ("harbr-experience", "Recovery Center", "api/v1/index.json", "infrastructure.json"):
                     require(marker in guidance_step, f"Restore Harbr guidance-readiness check is missing: {marker}")
