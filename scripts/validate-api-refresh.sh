@@ -133,14 +133,18 @@ jq -e '
     and .warning_services == 0 and .failed_services == 0 and .image_updates == 1 and .reboots_required == 1)
   and (.sites[0].hosts[0].docker.projects[] | select(.project_id == "nginx-proxy-manager") | .status == "warning")
   and (.sites[0].hosts[0].docker.projects[].services[] | select(.service_id == "db") |
-    .name == "npm-db" and .runtime_status == "healthy"
+    .name == "npm-db" and .container_name == "npm-db" and .runtime_status == "healthy" and .health_status == "unknown"
     and .image == "mariadb:10.11" and .update_status == "update_available")
   and (.sites[0].hosts[0].docker.projects[].services[] | select(.service_id == "npm") |
-    .name == "nginx-p-m" and .runtime_status == "healthy"
+    .name == "nginx-p-m" and .container_name == "nginx-p-m" and .runtime_status == "healthy" and .health_status == "unknown"
     and .image == "jc21/nginx-proxy-manager:latest" and .update_status == "current")
+  and (.sites[0].hosts[0].docker.projects[].services[] | select(.service_id == "jellyfin") |
+    .container_name == "jellyfin" and .runtime_status == "healthy" and .health_status == "healthy")
+  and (.sites[0].hosts[0].docker.projects[].services[] | select(.service_id == "pihole") |
+    .container_name == "pihole" and .runtime_status == "healthy" and .health_status == "healthy")
 ' "$TEST_ROOT/infrastructure-generated.json" >/dev/null
-for forbidden in local_digest remote_digest image_id management_ip compose_directory compose_file secret credential; do
-  ! grep -q "$forbidden" "$TEST_ROOT/infrastructure-generated.json"
+for forbidden in local_digest remote_digest image_id management_ip compose_directory compose_file secret registry_credentials runtime_state health started_at; do
+  ! grep -q "\"$forbidden\"" "$TEST_ROOT/infrastructure-generated.json"
 done
 cp "$TEST_ROOT/infrastructure-generated.json" "$TEST_ROOT/infrastructure-before.json"
 if HARBR_ROOT="$TEST_ROOT" SERVICE_CHECK_SOURCE="$TEST_ROOT/missing.json" "$TEST_ROOT/plugins/service-check/generate-infrastructure.sh" "$TEST_ROOT/infrastructure-generated.json"; then

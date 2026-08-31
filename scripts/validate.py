@@ -684,7 +684,7 @@ def validate_infrastructure() -> None:
     for forbidden in ("local_digest", "remote_digest", "image_id", "management_ip", "compose_file", "compose_directory"):
         require(forbidden not in schema_text, f"Private field present in Infrastructure schema: {forbidden}")
     generator = INFRASTRUCTURE_GENERATOR_PATH.read_text(encoding="utf-8")
-    for marker in ("SERVICE_CHECK_SOURCE", "/var/lib/service-check/status.json", "state/.api-build", "mktemp -d", "jq -e", "mv -f", "EUID == 0", "elif .site and .host", ".host.status", "failed_systemd_units", ".image.reference?", ".image.update_status?"):
+    for marker in ("SERVICE_CHECK_SOURCE", "/var/lib/service-check/status.json", "state/.api-build", "mktemp -d", "jq -e", "mv -f", "EUID == 0", "elif .site and .host", ".host.status", "failed_systemd_units", ".image.reference?", ".image.update_status?", "def docker_health", ".container_name // .name", ".health // \"unknown\""):
         require(marker in generator, f"Infrastructure adapter missing {marker}")
     require("docker.sock" not in generator and "systemctl" not in generator and "apt " not in generator, "Infrastructure adapter performs collection")
     fixture = load_json(SERVICE_CHECK_V03_FIXTURE_PATH)
@@ -692,8 +692,10 @@ def validate_infrastructure() -> None:
     require(fixture.get("collector") == {"name": "service-check", "version": "0.3.0"}, "service-check fixture has the wrong collector identity")
     require(fixture["site"].get("id") == "LDF" and fixture["host"].get("id") == "ldf-dockerhost", "service-check fixture has the wrong stable identities")
     require(fixture["host"].get("failed_systemd_units") == [], "service-check fixture must exercise the systemd array shape")
-    fixture_services = [service for project in fixture["host"]["docker"]["projects"] for service in project["services"]]
+    require(all("containers" in project and "services" not in project for project in fixture["host"]["docker"]["projects"]), "service-check fixture must use the v0.3 containers key")
+    fixture_services = [service for project in fixture["host"]["docker"]["projects"] for service in project["containers"]]
     require(len(fixture_services) == 7 and all(service["status"] == "healthy" for service in fixture_services), "service-check fixture must contain seven healthy runtime services")
+    require(all(service.get("runtime_state") == "running" and "health" in service and "started_at" in service for service in fixture_services), "service-check fixture lacks real container runtime fields")
     database = next(service for service in fixture_services if service["service_id"] == "db")
     require(database["image"]["reference"] == "mariadb:10.11" and database["image"]["update_status"] == "update_available", "service-check fixture does not exercise the nested MariaDB image update")
     app = APP_PATH.read_text(encoding="utf-8")
