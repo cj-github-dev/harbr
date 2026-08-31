@@ -491,6 +491,7 @@ main {
 }
 
 .summary-panel > h2,
+.infrastructure h2,
 .reference > h2 {
   margin: 0 0 24px;
   font-size: 30px;
@@ -586,6 +587,112 @@ blockquote {
   font-size: 31px;
   line-height: 1.3;
   text-align: center;
+}
+
+.infrastructure {
+  padding: 52px 40px 58px;
+  border-top: 1px solid var(--line);
+  background: radial-gradient(circle at 85% 5%, rgba(120, 166, 111, 0.11), transparent 35%), #08191d;
+}
+
+.infrastructure-heading,
+.site-heading,
+.host-heading,
+.project-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.infrastructure-heading h2,
+.site-heading h3,
+.host-heading h4,
+.project-card h5 { margin: 0; }
+.infrastructure-heading h2 { font-size: 34px; }
+.eyebrow { margin: 0 0 5px; color: var(--gold); font-size: 10px; letter-spacing: .11em; text-transform: uppercase; }
+.freshness { margin: 0; color: var(--muted); font-size: 13px; }
+.freshness[data-status="healthy"] { color: var(--lime); }
+.freshness[data-status="warning"] { color: var(--gold); }
+.freshness[data-status="failure"] { color: var(--danger); }
+
+.infrastructure-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.infrastructure-fact {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-left: 3px solid #777b77;
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,.025);
+}
+.infrastructure-fact span { display: block; color: var(--muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.infrastructure-fact strong { display: block; margin-top: 5px; color: #aaa9a2; font-size: 14px; }
+[data-status="healthy"].infrastructure-fact { border-left-color: var(--green); }
+[data-status="healthy"].infrastructure-fact strong { color: var(--lime); }
+[data-status="warning"].infrastructure-fact { border-left-color: var(--gold); }
+[data-status="warning"].infrastructure-fact strong { color: var(--gold); }
+[data-status="failure"].infrastructure-fact { border-left-color: var(--danger); }
+[data-status="failure"].infrastructure-fact strong { color: var(--danger); }
+
+.infrastructure-sites { display: grid; gap: 20px; margin-top: 24px; }
+.site-card, .host-card, .project-card, .vm-card { border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.site-card { padding: 22px; background: var(--glass); box-shadow: 0 20px 55px rgba(0,0,0,.17); }
+.site-card[data-status="warning"], .host-card[data-status="warning"], .project-card[data-status="warning"], .vm-card[data-status="warning"] { border-color: rgba(239,209,125,.45); }
+.site-card[data-status="failure"], .host-card[data-status="failure"], .project-card[data-status="failure"], .vm-card[data-status="failure"] { border-color: rgba(228,135,111,.55); }
+.site-heading { padding-bottom: 17px; border-bottom: 1px solid var(--line); }
+.site-heading h3 { font-family: var(--serif); font-size: 25px; }
+.status-chip, .update-chip { display: inline-flex; align-items: center; gap: 6px; color: #aaa9a2; font-size: 11px; }
+.status-chip::before, .update-chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+[data-status="healthy"] > .status-chip, .service-row[data-status="healthy"] .status-chip, .update-chip[data-status="healthy"] { color: var(--lime); }
+[data-status="warning"] > .status-chip, .service-row[data-status="warning"] .status-chip, .update-chip[data-status="warning"] { color: var(--gold); }
+[data-status="failure"] > .status-chip, .service-row[data-status="failure"] .status-chip, .update-chip[data-status="failure"] { color: var(--danger); }
+.host-card[data-status="healthy"] .host-heading .status-chip,
+.project-card[data-status="healthy"] > header .status-chip,
+.vm-card[data-status="healthy"] > .status-chip { color: var(--lime); }
+.host-card[data-status="warning"] .host-heading .status-chip,
+.project-card[data-status="warning"] > header .status-chip,
+.vm-card[data-status="warning"] > .status-chip { color: var(--gold); }
+.host-card[data-status="failure"] .host-heading .status-chip,
+.project-card[data-status="failure"] > header .status-chip,
+.vm-card[data-status="failure"] > .status-chip { color: var(--danger); }
+.host-list { display: grid; gap: 16px; margin-top: 17px; }
+.host-card { padding: 20px; background: rgba(3,15,18,.5); }
+.host-heading h4 { font-size: 21px; }
+.host-facts, .filesystem-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; margin-top: 17px; }
+.filesystem-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.workload-heading { margin: 22px 0 10px; color: var(--text); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+.project-grid, .vm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.project-card, .vm-card { padding: 15px; background: rgba(255,255,255,.025); }
+.project-card h5 { font-size: 14px; }
+.service-row { display: flex; justify-content: space-between; gap: 14px; padding-top: 13px; margin-top: 13px; border-top: 1px solid var(--line); }
+.service-row strong, .service-row small { display: block; }
+.service-row small { margin-top: 3px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.service-states { display: grid; justify-items: end; gap: 5px; flex: 0 0 auto; }
+.vm-card > .status-chip { float: right; }
+.infrastructure-empty { padding: 28px; border: 1px dashed var(--line); border-radius: var(--radius-lg); color: var(--muted); text-align: center; }
+
+@media (max-width: 1100px) {
+  .host-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 700px) {
+  .infrastructure { padding: 38px 20px 44px; }
+  .infrastructure-heading, .site-heading { align-items: flex-start; flex-direction: column; }
+  .infrastructure-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .host-facts { grid-template-columns: 1fr 1fr; }
+  .site-card, .host-card { padding: 16px; }
+  .project-grid, .vm-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 440px) {
+  .host-facts, .infrastructure-summary { grid-template-columns: 1fr; }
+  .service-row { align-items: flex-start; flex-direction: column; }
+  .service-states { justify-items: start; }
 }
 
 .reference {
@@ -1141,7 +1248,7 @@ blockquote {
     left: 10px;
     z-index: 50;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     height: 58px;
     padding: 6px;
     border: 1px solid var(--line);

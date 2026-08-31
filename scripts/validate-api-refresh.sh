@@ -24,6 +24,8 @@ trap cleanup EXIT
 mkdir -p \
   "$TEST_ROOT/api/bootstrap/v1" \
   "$TEST_ROOT/plugins/docker" \
+  "$TEST_ROOT/plugins/service-check" \
+  "$TEST_ROOT/scripts/fixtures" \
   "$TEST_ROOT/scripts" \
   "$TEST_ROOT/state/recovery" \
   "$TEST_ROOT/state/sites" \
@@ -36,6 +38,8 @@ cp "$SOURCE_ROOT/state/sites/LDF.json" "$TEST_ROOT/state/sites/"
 cp "$SOURCE_ROOT/state/recovery/prerequisites.json" "$TEST_ROOT/state/recovery/"
 cp "$SOURCE_ROOT/plugins/docker/refresh-api.sh" "$TEST_ROOT/plugins/docker/"
 cp "$SOURCE_ROOT/plugins/docker/generate-inventory.sh" "$TEST_ROOT/plugins/docker/"
+cp "$SOURCE_ROOT/plugins/service-check/generate-infrastructure.sh" "$TEST_ROOT/plugins/service-check/"
+cp "$SOURCE_ROOT/scripts/fixtures/service-check-v0.3.json" "$TEST_ROOT/scripts/fixtures/"
 cp "$SOURCE_ROOT/scripts/init-api.sh" "$TEST_ROOT/scripts/"
 
 cat > "$TEST_ROOT/backup.conf" <<'EOF'
@@ -98,6 +102,7 @@ run_refresh
 run_refresh
 
 jq -e '.resources.inventory == "/api/v1/inventory.json"' "$TEST_ROOT/api/v1/index.json" >/dev/null
+jq -e '.resources.infrastructure == "/api/v1/infrastructure.json"' "$TEST_ROOT/api/v1/index.json" >/dev/null
 jq -e '.inventory_status == "generated" and (.components | length) > 0' "$TEST_ROOT/api/v1/inventory.json" >/dev/null
 
 minimal_path="$TEST_ROOT/inventory-minimal-path"
@@ -114,6 +119,34 @@ jq -e '
   .inventory_status == "generated"
   and any(.components[]; .detected.status == "missing" or .detected.status == "unavailable")
 ' "$TEST_ROOT/minimal-inventory.json" >/dev/null
+
+cp "$TEST_ROOT/scripts/fixtures/service-check-v0.3.json" "$TEST_ROOT/service-check.json"
+HARBR_ROOT="$TEST_ROOT" SERVICE_CHECK_SOURCE="$TEST_ROOT/service-check.json" \
+  "$TEST_ROOT/plugins/service-check/generate-infrastructure.sh" "$TEST_ROOT/infrastructure-generated.json"
+jq -e '
+  .status == "warning"
+  and (.sites[0] | .site_id == "LDF" and .status == "warning")
+  and (.sites[0].hosts[0] | .host_id == "ldf-dockerhost" and .status == "warning"
+    and .reboot_required == true and .systemd.status == "healthy" and .systemd.failed_units == 0
+    and .package_updates.available == 0 and .package_updates.security == 0)
+  and (.summary | .hosts == 1 and .services == 7 and .healthy_services == 7
+    and .warning_services == 0 and .failed_services == 0 and .image_updates == 1 and .reboots_required == 1)
+  and (.sites[0].hosts[0].docker.projects[] | select(.project_id == "nginx-proxy-manager") | .status == "warning")
+  and (.sites[0].hosts[0].docker.projects[].services[] | select(.service_id == "db") |
+    .name == "npm-db" and .runtime_status == "healthy"
+    and .image == "mariadb:10.11" and .update_status == "update_available")
+  and (.sites[0].hosts[0].docker.projects[].services[] | select(.service_id == "npm") |
+    .name == "nginx-p-m" and .runtime_status == "healthy"
+    and .image == "jc21/nginx-proxy-manager:latest" and .update_status == "current")
+' "$TEST_ROOT/infrastructure-generated.json" >/dev/null
+for forbidden in local_digest remote_digest image_id management_ip compose_directory compose_file secret credential; do
+  ! grep -q "$forbidden" "$TEST_ROOT/infrastructure-generated.json"
+done
+cp "$TEST_ROOT/infrastructure-generated.json" "$TEST_ROOT/infrastructure-before.json"
+if HARBR_ROOT="$TEST_ROOT" SERVICE_CHECK_SOURCE="$TEST_ROOT/missing.json" "$TEST_ROOT/plugins/service-check/generate-infrastructure.sh" "$TEST_ROOT/infrastructure-generated.json"; then
+  echo "Infrastructure adapter unexpectedly accepted a missing source" >&2; exit 1
+fi
+cmp "$TEST_ROOT/infrastructure-before.json" "$TEST_ROOT/infrastructure-generated.json"
 
 for file in "$TEST_ROOT/api/v1/"*.json; do
   jq empty "$file"

@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 import hashlib
 import runpy
+import subprocess
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -23,6 +25,9 @@ RCLONE_INSTALLER_PATH = ROOT / "scripts" / "install-rclone-remote.sh"
 HOST_PREFLIGHT_PATH = ROOT / "scripts" / "preflight-refresh-host.sh"
 PREREQUISITES_PATH = ROOT / "state" / "recovery" / "prerequisites.json"
 INVENTORY_GENERATOR_PATH = ROOT / "plugins" / "docker" / "generate-inventory.sh"
+INFRASTRUCTURE_GENERATOR_PATH = ROOT / "plugins" / "service-check" / "generate-infrastructure.sh"
+INFRASTRUCTURE_SCHEMA_PATH = ROOT / "contracts" / "v1" / "infrastructure.schema.json"
+SERVICE_CHECK_V03_FIXTURE_PATH = ROOT / "scripts" / "fixtures" / "service-check-v0.3.json"
 APPROVED_RING_HASHES = {
     RING_CONFIG_PATH: "c78248ebd91194730a5e6ae045970de64321508af8c871b0bc79314871e48d5e",
     RING_CSS_PATH: "73fab272f1ab3ce8c4c19208e1fc727a0af25ed23ad616b2f9058e8a79fd0399",
@@ -74,6 +79,7 @@ def validate_json() -> None:
         load_json(path)
     load_json(REFERENCE_PATH)
     load_json(PREREQUISITES_PATH)
+    load_json(SERVICE_CHECK_V03_FIXTURE_PATH)
 
 
 def validate_internal_resources() -> None:
@@ -667,6 +673,38 @@ def validate_inventory() -> None:
     require("rclone.conf" not in generator or "SOURCE_CONFIG" not in generator, "Inventory generator must not inspect rclone credential contents")
 
 
+def validate_infrastructure() -> None:
+    data = load_json(API_SOURCE_ROOT / "infrastructure.json")
+    require(data.get("api_version") == "v1", "Infrastructure fixture is not versioned")
+    require(data.get("status") == "unknown" and data.get("sites") == [], "Bootstrap Infrastructure must not fabricate healthy state")
+    require(data.get("stale_after_seconds") == 300, "Infrastructure freshness contract changed unexpectedly")
+    index = load_json(API_SOURCE_ROOT / "index.json")
+    require(index["resources"].get("infrastructure") == "/api/v1/infrastructure.json", "Infrastructure is not registered")
+    schema_text = INFRASTRUCTURE_SCHEMA_PATH.read_text(encoding="utf-8")
+    for forbidden in ("local_digest", "remote_digest", "image_id", "management_ip", "compose_file", "compose_directory"):
+        require(forbidden not in schema_text, f"Private field present in Infrastructure schema: {forbidden}")
+    generator = INFRASTRUCTURE_GENERATOR_PATH.read_text(encoding="utf-8")
+    for marker in ("SERVICE_CHECK_SOURCE", "/var/lib/service-check/status.json", "state/.api-build", "mktemp -d", "jq -e", "mv -f", "EUID == 0", "elif .site and .host", ".host.status", "failed_systemd_units", ".image.reference?", ".image.update_status?"):
+        require(marker in generator, f"Infrastructure adapter missing {marker}")
+    require("docker.sock" not in generator and "systemctl" not in generator and "apt " not in generator, "Infrastructure adapter performs collection")
+    fixture = load_json(SERVICE_CHECK_V03_FIXTURE_PATH)
+    require("sites" not in fixture and {"site", "host"} <= fixture.keys(), "service-check fixture must use the v0.3 single-host shape")
+    require(fixture.get("collector") == {"name": "service-check", "version": "0.3.0"}, "service-check fixture has the wrong collector identity")
+    require(fixture["site"].get("id") == "LDF" and fixture["host"].get("id") == "ldf-dockerhost", "service-check fixture has the wrong stable identities")
+    require(fixture["host"].get("failed_systemd_units") == [], "service-check fixture must exercise the systemd array shape")
+    fixture_services = [service for project in fixture["host"]["docker"]["projects"] for service in project["services"]]
+    require(len(fixture_services) == 7 and all(service["status"] == "healthy" for service in fixture_services), "service-check fixture must contain seven healthy runtime services")
+    database = next(service for service in fixture_services if service["service_id"] == "db")
+    require(database["image"]["reference"] == "mariadb:10.11" and database["image"]["update_status"] == "update_available", "service-check fixture does not exercise the nested MariaDB image update")
+    app = APP_PATH.read_text(encoding="utf-8")
+    for marker in ("renderInfrastructure", "pollInfrastructure", "60000", "visibilitychange", "infrastructure.json"):
+        require(marker in app, f"Infrastructure browser integration missing {marker}")
+    subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "validate-json-schema.py"), str(INFRASTRUCTURE_SCHEMA_PATH), str(API_SOURCE_ROOT / "infrastructure.json")],
+        check=True, capture_output=True, text=True,
+    )
+
+
 def validate_refresh_deployment() -> None:
     unit = REFRESH_UNIT_PATH.read_text(encoding="utf-8")
     drop_in = BACKUP_DROP_IN_PATH.read_text(encoding="utf-8")
@@ -686,7 +724,8 @@ def validate_refresh_deployment() -> None:
     require("EUID == 0" in refresh, "API refresh must refuse root execution")
     require('source_file in "$BACKUP_STATUS" "$BACKUP_HISTORY"' in refresh, "API refresh lacks source permission checks")
     require('"$INVENTORY_GENERATOR" "$TMP_DIR/inventory.json"' in refresh, "API refresh does not generate inventory")
-    require("site confidence story history coverage system inventory index" in refresh, "Inventory is not atomically published")
+    require("site confidence story history coverage system inventory infrastructure index" in refresh, "API resources are not atomically published")
+    require('infrastructure: "/api/v1/infrastructure.json"' in refresh, "Infrastructure is not registered by runtime refresh")
     for marker in (
         'DEST_CONFIG="${DEST_CONFIG:-/var/lib/harbr/rclone/rclone.conf}"',
         'REMOTE_NAME="${REMOTE_NAME:-OneDrive}"',
@@ -709,6 +748,7 @@ def main() -> None:
     validate_documentation()
     validate_recovery_prerequisites()
     validate_inventory()
+    validate_infrastructure()
     validate_refresh_deployment()
     print("Harbr validation passed")
 
