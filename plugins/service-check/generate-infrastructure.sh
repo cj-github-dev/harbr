@@ -44,14 +44,15 @@ candidate="$build_dir/infrastructure.json"
 # cannot cross the public API boundary.
 jq --argjson stale "$STALE_AFTER_SECONDS" '
   def sem: if . == "healthy" then "healthy" elif . == "warning" then "warning" elif . == "failure" then "failure" else "unknown" end;
+  def docker_health: if . == "healthy" then "healthy" elif . == "unhealthy" or . == "failure" then "failure" elif . == "warning" then "warning" else "unknown" end;
   def upd: if . == "current" then "current" elif . == "update_available" then "update_available" else "unknown" end;
   def safe_string: if type == "string" and length > 0 then . else null end;
   def service:
     { service_id: (.service_id // .id // .name), name: (.display_name // .name // .service_id // .id),
-      container_name: ((.container_name // null) | safe_string),
+      container_name: ((.container_name // .name // null) | safe_string),
       status: ((.status // .runtime_status // "unknown") | sem),
       runtime_status: ((.runtime_status // .status // "unknown") | sem),
-      health_status: ((.health_status // .docker_health // "unknown") | sem),
+      health_status: (if .health_status != null then (.health_status | sem) elif .docker_health != null then (.docker_health | docker_health) else ((.health // "unknown") | docker_health) end),
       image: ((.image.reference? // .image_reference // (if (.image | type) == "string" then .image else null end)) | safe_string),
       update_status: ((.image.update_status? // .update_status // .image_update_status // "unknown") | upd),
       software_version: ((.software_version // .version // null) | safe_string) };

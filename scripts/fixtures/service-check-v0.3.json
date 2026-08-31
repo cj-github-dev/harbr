@@ -27,34 +27,34 @@
       "projects": [
         {
           "id": "harbr", "name": "Harbr", "status": "healthy", "compose_directory": "/srv/docker/harbr",
-          "services": [
-            { "service_id": "harbr-experience", "name": "harbr-experience", "status": "healthy", "image": { "reference": "nginx:1.27-alpine", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" } },
-            { "service_id": "harbr-ring-lab", "name": "harbr-ring-lab", "status": "healthy", "image": { "reference": "nginx:1.27-alpine", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" } }
+          "containers": [
+            { "service_id": "harbr-experience", "name": "harbr-experience", "status": "healthy", "runtime_state": "running", "health": "not-configured", "image": { "reference": "nginx:1.27-alpine", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" }, "started_at": "2026-08-31T10:00:00-05:00" },
+            { "service_id": "harbr-ring-lab", "name": "harbr-ring-lab", "status": "healthy", "runtime_state": "running", "health": "not-configured", "image": { "reference": "nginx:1.27-alpine", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" }, "started_at": "2026-08-31T10:00:00-05:00" }
           ]
         },
         {
           "id": "homeassistant", "name": "Home Assistant", "status": "healthy", "compose_file": "/srv/docker/homeassistant/compose.yml",
-          "services": [
-            { "service_id": "homeassistant", "name": "homeassistant", "status": "healthy", "image": { "reference": "ghcr.io/home-assistant/home-assistant:stable", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" } }
+          "containers": [
+            { "service_id": "homeassistant", "name": "homeassistant", "status": "healthy", "runtime_state": "running", "health": "not-configured", "image": { "reference": "ghcr.io/home-assistant/home-assistant:stable", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" }, "started_at": "2026-08-31T10:00:00-05:00" }
           ]
         },
         {
           "id": "jellyfin", "name": "Jellyfin", "status": "healthy",
-          "services": [
-            { "service_id": "jellyfin", "name": "jellyfin", "status": "healthy", "image": { "reference": "jellyfin/jellyfin:latest", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" } }
+          "containers": [
+            { "service_id": "jellyfin", "name": "jellyfin", "status": "healthy", "runtime_state": "running", "health": "healthy", "image": { "reference": "jellyfin/jellyfin:latest", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" }, "started_at": "2026-08-31T10:00:00-05:00" }
           ]
         },
         {
           "id": "nginx-proxy-manager", "name": "Nginx Proxy Manager", "status": "warning",
-          "services": [
-            { "service_id": "db", "name": "npm-db", "status": "healthy", "image": { "reference": "mariadb:10.11", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "update_available", "image_id": "sha256:private" } },
-            { "service_id": "npm", "name": "nginx-p-m", "status": "healthy", "image": { "reference": "jc21/nginx-proxy-manager:latest", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" } }
+          "containers": [
+            { "service_id": "db", "name": "npm-db", "status": "healthy", "runtime_state": "running", "health": "not-configured", "image": { "reference": "mariadb:10.11", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "update_available", "image_id": "sha256:private" }, "started_at": "2026-08-31T10:00:00-05:00" },
+            { "service_id": "npm", "name": "nginx-p-m", "status": "healthy", "runtime_state": "running", "health": "not-configured", "image": { "reference": "jc21/nginx-proxy-manager:latest", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" }, "started_at": "2026-08-31T10:00:00-05:00" }
           ]
         },
         {
           "id": "pihole", "name": "Pi-hole", "status": "healthy",
-          "services": [
-            { "service_id": "pihole", "name": "pihole", "status": "healthy", "image": { "reference": "pihole/pihole:latest", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" } }
+          "containers": [
+            { "service_id": "pihole", "name": "pihole", "status": "healthy", "runtime_state": "running", "health": "healthy", "image": { "reference": "pihole/pihole:latest", "local_digest": "sha256:private", "remote_digest": "sha256:private", "update_status": "current", "image_id": "sha256:private" }, "started_at": "2026-08-31T10:00:00-05:00" }
           ]
         }
       ]
