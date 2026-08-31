@@ -167,6 +167,67 @@ deployment user; it intentionally refuses root execution.
 The v4 experience retains Harbr's startup animation, Confidence Ring,
 seasonal landscape, glass surfaces, typography, and responsive navigation.
 
+### Infrastructure
+
+`/api/v1/infrastructure.json` is Harbr's read-only, multi-site operational
+view. Its hierarchy is `sites[] → hosts[] → optional capabilities`: Docker
+projects and services, platform services, filesystems, and virtualization with
+stable VM entities. Docker is optional, so the same v1 contract can represent
+the LDF Docker host, a Lake Forest Synology platform with containers and VMs,
+Linux VMs, hypervisors, and appliances without coupling the browser to a
+collector.
+
+The initial adapter is `plugins/service-check/generate-infrastructure.sh`.
+It reads the external collector's private record from
+`/var/lib/service-check/status.json` (override with
+`SERVICE_CHECK_SOURCE`), selects only public fields, validates the normalized
+document, and atomically publishes it through a private `state/.api-build`
+directory. It never runs health/package/registry/systemd checks, reads the
+Docker socket, or modifies the collector source. Digests, image IDs,
+management addresses, Compose paths, logs, credentials, secrets, and other
+unselected private fields cannot cross the allow-list transformation.
+
+The publisher must run as the normal Harbr deployment user, never root. That
+user needs read/search permission on the source file and its parent directory;
+provision this on the host with an existing appropriate group or ACL. Harbr
+does not assume or create a user/group and does not weaken file permissions.
+If the source is unreadable or transformation/validation fails, the adapter
+exits nonzero before its atomic rename and leaves the last valid public file
+intact.
+
+Infrastructure timestamps carry a 300-second freshness window. The Experience
+calculates freshness in the browser and polls only this resource every 60
+seconds with `cache: no-store`. Missing, failed, or stale data preserves useful
+last-known details but changes current confidence to the neutral/unknown
+presentation. Infrastructure never changes Restore Confidence.
+
+Statuses aggregate from workloads through hosts and sites using `healthy`,
+`warning`, `failure`, and `unknown`. Runtime health remains separate from image
+maintenance: a healthy service can report `update_available`, causing an
+attention-level project/host/site without presenting the service as failed.
+
+After service-check has written a record, publish and inspect it with:
+
+```bash
+cd /srv/docker/harbr
+chmod +x plugins/service-check/generate-infrastructure.sh
+SERVICE_CHECK_SOURCE=/var/lib/service-check/status.json \
+  HARBR_ROOT="$PWD" ./plugins/service-check/generate-infrastructure.sh
+jq empty api/v1/infrastructure.json
+jq '{generated_at,status,summary,sites}' api/v1/infrastructure.json
+```
+
+To verify source permissions without displaying private content, run:
+
+```bash
+sudo -u "$(stat -c '%U' /srv/docker/harbr)" test -r /var/lib/service-check/status.json
+```
+
+If that check fails, an administrator must grant the deployment identity
+read/search access using the host's established access-control policy before
+running the adapter. Do not make the API publisher root or expose the private
+record through Nginx.
+
 ### Confidence Ring configuration
 
 `ui/experience/config/confidence-ring.json` is the authoritative approved
@@ -236,6 +297,7 @@ Run the dependency-free repository validation with:
 
 ```powershell
 python scripts/validate.py
+python scripts/validate-json-schema.py contracts/v1/infrastructure.schema.json api/bootstrap/v1/infrastructure.json
 node --check ui/experience/app.js
 ```
 

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harbr.nshsystems.com/contracts/v1/infrastructure.schema.json",
+  "title": "Harbr Infrastructure",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version", "generated_at", "stale_after_seconds", "status", "summary", "sites"],
+  "properties": {
+    "api_version": { "const": "v1" },
+    "generated_at": { "type": ["string", "null"], "format": "date-time" },
+    "stale_after_seconds": { "type": "integer", "minimum": 30 },
+    "status": { "$ref": "#/$defs/status" },
+    "summary": { "$ref": "#/$defs/summary" },
+    "sites": { "type": "array", "items": { "$ref": "#/$defs/site" } }
+  },
+  "$defs": {
+    "status": { "type": "string", "enum": ["healthy", "warning", "failure", "unknown"] },
+    "updateStatus": { "type": "string", "enum": ["current", "update_available", "unknown"] },
+    "summary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sites", "hosts", "services", "healthy_services", "warning_services", "failed_services", "image_updates", "package_updates", "security_updates", "reboots_required"],
+      "properties": {
+        "sites": { "type": "integer", "minimum": 0 }, "hosts": { "type": "integer", "minimum": 0 },
+        "services": { "type": "integer", "minimum": 0 }, "healthy_services": { "type": "integer", "minimum": 0 },
+        "warning_services": { "type": "integer", "minimum": 0 }, "failed_services": { "type": "integer", "minimum": 0 },
+        "image_updates": { "type": "integer", "minimum": 0 }, "package_updates": { "type": "integer", "minimum": 0 },
+        "security_updates": { "type": "integer", "minimum": 0 }, "reboots_required": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "site": {
+      "type": "object", "additionalProperties": false, "required": ["site_id", "name", "status", "hosts"],
+      "properties": {
+        "site_id": { "type": "string", "minLength": 1 }, "name": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/status" }, "hosts": { "type": "array", "items": { "$ref": "#/$defs/host" } }
+      }
+    },
+    "host": {
+      "type": "object", "additionalProperties": false, "required": ["host_id", "name", "role", "status"],
+      "properties": {
+        "host_id": { "type": "string", "minLength": 1 }, "name": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "minLength": 1 }, "status": { "$ref": "#/$defs/status" },
+        "platform": { "type": ["string", "null"] }, "model": { "type": ["string", "null"] },
+        "software_version": { "type": ["string", "null"] }, "uptime_seconds": { "type": ["integer", "null"], "minimum": 0 },
+        "os": { "$ref": "#/$defs/os" }, "reboot_required": { "type": ["boolean", "null"] },
+        "systemd": { "$ref": "#/$defs/systemd" }, "package_updates": { "$ref": "#/$defs/packages" },
+        "filesystems": { "type": "array", "items": { "$ref": "#/$defs/filesystem" } },
+        "docker": { "$ref": "#/$defs/docker" }, "virtualization": { "$ref": "#/$defs/virtualization" },
+        "services": { "type": "array", "items": { "$ref": "#/$defs/service" } }
+      }
+    },
+    "os": { "type": ["object", "null"], "additionalProperties": false, "properties": { "name": { "type": ["string", "null"] }, "version": { "type": ["string", "null"] }, "pretty_name": { "type": ["string", "null"] } } },
+    "systemd": { "type": ["object", "null"], "additionalProperties": false, "required": ["status", "failed_units"], "properties": { "status": { "$ref": "#/$defs/status" }, "failed_units": { "type": "integer", "minimum": 0 } } },
+    "packages": { "type": ["object", "null"], "additionalProperties": false, "required": ["status", "available", "security", "metadata_status"], "properties": { "status": { "$ref": "#/$defs/status" }, "available": { "type": "integer", "minimum": 0 }, "security": { "type": "integer", "minimum": 0 }, "metadata_status": { "type": "string", "enum": ["fresh", "stale", "unknown"] } } },
+    "filesystem": { "type": "object", "additionalProperties": false, "required": ["filesystem_id", "label", "status", "used_percent"], "properties": { "filesystem_id": { "type": "string", "minLength": 1 }, "label": { "type": "string", "minLength": 1 }, "status": { "$ref": "#/$defs/status" }, "used_percent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 } } },
+    "docker": { "type": ["object", "null"], "additionalProperties": false, "required": ["status", "daemon_status", "projects"], "properties": { "status": { "$ref": "#/$defs/status" }, "daemon_status": { "$ref": "#/$defs/status" }, "server_version": { "type": ["string", "null"] }, "compose_version": { "type": ["string", "null"] }, "projects": { "type": "array", "items": { "$ref": "#/$defs/project" } } } },
+    "project": { "type": "object", "additionalProperties": false, "required": ["project_id", "name", "status", "services"], "properties": { "project_id": { "type": "string", "minLength": 1 }, "name": { "type": "string", "minLength": 1 }, "status": { "$ref": "#/$defs/status" }, "services": { "type": "array", "items": { "$ref": "#/$defs/service" } } } },
+    "service": { "type": "object", "additionalProperties": false, "required": ["service_id", "name", "status", "runtime_status", "update_status"], "properties": { "service_id": { "type": "string", "minLength": 1 }, "name": { "type": "string", "minLength": 1 }, "container_name": { "type": ["string", "null"] }, "status": { "$ref": "#/$defs/status" }, "runtime_status": { "$ref": "#/$defs/status" }, "health_status": { "$ref": "#/$defs/status" }, "image": { "type": ["string", "null"] }, "update_status": { "$ref": "#/$defs/updateStatus" }, "software_version": { "type": ["string", "null"] } } },
+    "virtualization": { "type": ["object", "null"], "additionalProperties": false, "required": ["status", "virtual_machines"], "properties": { "status": { "$ref": "#/$defs/status" }, "virtual_machines": { "type": "array", "items": { "$ref": "#/$defs/vm" } } } },
+    "vm": { "type": "object", "additionalProperties": false, "required": ["vm_id", "name", "status"], "properties": { "vm_id": { "type": "string", "minLength": 1 }, "name": { "type": "string", "minLength": 1 }, "status": { "$ref": "#/$defs/status" }, "runtime_status": { "$ref": "#/$defs/status" }, "os": { "$ref": "#/$defs/os" }, "uptime_seconds": { "type": ["integer", "null"], "minimum": 0 }, "reboot_required": { "type": ["boolean", "null"] }, "update_status": { "$ref": "#/$defs/updateStatus" }, "services": { "type": "array", "items": { "$ref": "#/$defs/service" } }, "docker": { "$ref": "#/$defs/docker" } } }
+  }
+}

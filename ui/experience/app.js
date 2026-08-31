@@ -8,7 +8,8 @@ const defaultResources = {
   history: '/api/v1/history.json',
   coverage: '/api/v1/coverage.json',
   system: '/api/v1/system.json',
-  inventory: '/api/v1/inventory.json'
+  inventory: '/api/v1/inventory.json',
+  infrastructure: '/api/v1/infrastructure.json'
 };
 
 const resourceDescriptions = {
@@ -18,7 +19,8 @@ const resourceDescriptions = {
   history: 'Recent archive metrics and the point-in-time evidence captured for each run.',
   coverage: 'Current local, daily, weekly, and monthly protection against configured retention targets.',
   system: 'Read-only product version, generation time, and next scheduled protection run.',
-  inventory: 'Curated host recovery prerequisites merged with safe detected versions, service states, and Harbr-scoped identities.'
+  inventory: 'Curated host recovery prerequisites merged with safe detected versions, service states, and Harbr-scoped identities.',
+  infrastructure: 'Current sanitized operational health, maintenance, hosts, workloads, and freshness across Harbr sites.'
 };
 
 const appState = {
@@ -34,6 +36,7 @@ const appState = {
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 let archiveTransitionTimer;
 let archiveTransitionFinishTimer;
+let infrastructurePollTimer;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -78,6 +81,135 @@ function formatBytes(bytes) {
     unit += 1;
   }
   return `${value.toFixed(unit > 1 ? 1 : 0)} ${units[unit]}`;
+}
+
+function infrastructureFreshness(data, pollFailed = false) {
+  const generated = new Date(data?.generated_at).getTime();
+  const maxAge = Number(data?.stale_after_seconds) * 1000;
+  const stale = pollFailed || !Number.isFinite(generated) || !Number.isFinite(maxAge) || Date.now() - generated > maxAge;
+  return { stale, status: stale ? 'unknown' : (data?.status || 'unknown') };
+}
+
+function infrastructureStatusLabel(status) {
+  return { healthy: 'Healthy', warning: 'Attention recommended', failure: 'Failure', unknown: 'Cannot verify' }[status] || 'Cannot verify';
+}
+
+function formatUptime(seconds) {
+  if (!Number.isFinite(seconds)) return 'Unavailable';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  return days ? `${days}d ${hours}h` : `${hours}h`;
+}
+
+function statusLine(label, value, status = 'unknown') {
+  const row = element('div', 'infrastructure-fact');
+  row.dataset.status = status;
+  row.append(element('span', '', label), element('strong', '', value));
+  return row;
+}
+
+function renderService(service) {
+  const row = element('div', 'service-row');
+  row.dataset.status = service.runtime_status || 'unknown';
+  const identity = element('div');
+  identity.append(element('strong', '', service.name || service.service_id), element('small', '', [service.container_name, service.image].filter(Boolean).join(' · ')));
+  const states = element('div', 'service-states');
+  states.append(element('span', 'status-chip', `Runtime ${infrastructureStatusLabel(service.runtime_status)}`));
+  const update = element('span', 'update-chip', service.update_status === 'update_available' ? 'Update available' : service.update_status === 'current' ? 'Image current' : 'Update unknown');
+  update.dataset.status = service.update_status === 'update_available' ? 'warning' : service.update_status === 'current' ? 'healthy' : 'unknown';
+  states.append(update);
+  row.append(identity, states);
+  return row;
+}
+
+function renderProject(project) {
+  const card = element('article', 'project-card');
+  card.dataset.status = project.status || 'unknown';
+  const heading = element('header');
+  heading.append(element('h5', '', project.name || project.project_id), element('span', 'status-chip', infrastructureStatusLabel(project.status)));
+  card.append(heading);
+  (project.services || []).forEach(service => card.append(renderService(service)));
+  if (!(project.services || []).length) card.append(element('p', 'data-unavailable', 'No services reported.'));
+  return card;
+}
+
+function renderHost(host, stale = false) {
+  const card = element('article', 'host-card');
+  card.dataset.status = stale ? 'unknown' : (host.status || 'unknown');
+  const heading = element('header', 'host-heading');
+  const title = element('div');
+  title.append(element('p', 'eyebrow', titleCase(host.role || 'host')), element('h4', '', host.name || host.host_id));
+  heading.append(title, element('span', 'status-chip', stale ? 'Last known · current state unverified' : infrastructureStatusLabel(host.status)));
+  card.append(heading);
+  const facts = element('div', 'host-facts');
+  facts.append(
+    statusLine('Operating system', host.os?.pretty_name || [host.os?.name, host.os?.version].filter(Boolean).join(' ') || host.platform || 'Unavailable', host.os ? 'healthy' : 'unknown'),
+    statusLine('Uptime', formatUptime(host.uptime_seconds), Number.isFinite(host.uptime_seconds) ? 'healthy' : 'unknown'),
+    statusLine('Reboot', host.reboot_required === true ? 'Required' : host.reboot_required === false ? 'Not required' : 'Unknown', host.reboot_required === true ? 'warning' : host.reboot_required === false ? 'healthy' : 'unknown'),
+    statusLine('Package updates', host.package_updates ? `${host.package_updates.available} available · ${host.package_updates.security} security` : 'Unavailable', host.package_updates?.status || 'unknown'),
+    statusLine('System services', host.systemd ? `${host.systemd.failed_units} failed` : 'Unavailable', host.systemd?.status || 'unknown')
+  );
+  if (host.docker) facts.append(statusLine('Docker', `${infrastructureStatusLabel(host.docker.daemon_status)}${host.docker.server_version ? ` · ${host.docker.server_version}` : ''}${host.docker.compose_version ? ` · Compose ${host.docker.compose_version}` : ''}`, host.docker.daemon_status));
+  card.append(facts);
+  if ((host.filesystems || []).length) {
+    const filesystems = element('div', 'filesystem-grid');
+    host.filesystems.forEach(fs => filesystems.append(statusLine(fs.label, Number.isFinite(fs.used_percent) ? `${fs.used_percent}% used` : 'Usage unavailable', fs.status)));
+    card.append(element('h5', 'workload-heading', 'Storage'), filesystems);
+  }
+  const projects = host.docker?.projects || [];
+  if (projects.length) {
+    const grid = element('div', 'project-grid');
+    projects.forEach(project => grid.append(renderProject(project)));
+    card.append(element('h5', 'workload-heading', 'Applications & containers'), grid);
+  }
+  const vms = host.virtualization?.virtual_machines || [];
+  if (vms.length) {
+    const grid = element('div', 'vm-grid');
+    vms.forEach(vm => { const vmCard = element('article', 'vm-card'); vmCard.dataset.status = vm.status || 'unknown'; vmCard.append(element('strong', '', vm.name || vm.vm_id), element('span', 'status-chip', infrastructureStatusLabel(vm.status))); (vm.services || []).forEach(service => vmCard.append(renderService(service))); (vm.docker?.projects || []).forEach(project => vmCard.append(renderProject(project))); grid.append(vmCard); });
+    card.append(element('h5', 'workload-heading', 'Virtual machines'), grid);
+  }
+  return card;
+}
+
+function renderInfrastructure(data, pollFailed = false) {
+  const summaryRoot = $('#infrastructure-summary');
+  const sitesRoot = $('#infrastructure-sites');
+  summaryRoot.replaceChildren(); sitesRoot.replaceChildren();
+  const freshness = infrastructureFreshness(data, pollFailed);
+  const freshnessNode = $('#infrastructure-freshness');
+  freshnessNode.dataset.status = freshness.status;
+  freshnessNode.textContent = freshness.stale ? 'Status cannot be verified · data is stale or unavailable' : `Current · checked ${formatDate(data.generated_at, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`;
+  const summary = data?.summary || {};
+  [
+    ['Host Health', summary.hosts ? infrastructureStatusLabel(freshness.status) : 'No hosts reported', freshness.status],
+    ['Service Health', `${summary.healthy_services || 0} of ${summary.services || 0} operational`, freshness.stale ? 'unknown' : summary.failed_services ? 'failure' : summary.warning_services ? 'warning' : summary.services ? 'healthy' : 'unknown'],
+    ['Updates', `${(summary.image_updates || 0) + (summary.package_updates || 0)} waiting`, freshness.stale ? 'unknown' : (summary.image_updates || summary.package_updates) ? 'warning' : 'healthy'],
+    ['Reboot', summary.reboots_required ? `${summary.reboots_required} required` : 'Not required', freshness.stale ? 'unknown' : summary.reboots_required ? 'warning' : 'healthy']
+  ].forEach(([label, value, status]) => summaryRoot.append(statusLine(label, value, status)));
+  (data?.sites || []).forEach(site => {
+    const section = element('section', 'site-card'); section.dataset.status = freshness.stale ? 'unknown' : (site.status || 'unknown');
+    const heading = element('header', 'site-heading'); const title = element('div'); title.append(element('p', 'eyebrow', site.site_id), element('h3', '', site.name));
+    heading.append(title, element('span', 'status-chip', freshness.stale ? 'Cannot verify current state' : infrastructureStatusLabel(site.status))); section.append(heading);
+    const hosts = element('div', 'host-list'); (site.hosts || []).forEach(host => hosts.append(renderHost(host, freshness.stale))); section.append(hosts); sitesRoot.append(section);
+  });
+  if (!(data?.sites || []).length) sitesRoot.append(element('p', 'infrastructure-empty', 'Infrastructure has not been published yet. Existing Harbr recovery data remains available.'));
+}
+
+async function pollInfrastructure() {
+  try {
+    const data = await requestJson(appState.resources.infrastructure || defaultResources.infrastructure);
+    appState.data.infrastructure = data;
+    renderInfrastructure(data);
+    renderReferences();
+  } catch (error) {
+    console.warn(error);
+    renderInfrastructure(appState.data.infrastructure, true);
+  }
+}
+
+function startInfrastructurePolling() {
+  if (infrastructurePollTimer) return;
+  infrastructurePollTimer = window.setInterval(() => { if (!document.hidden) pollInfrastructure(); }, 60000);
 }
 
 function confidenceStatus(level) {
@@ -500,10 +632,13 @@ async function loadExperience() {
   renderSite(appState.data.site);
   renderArchiveList(appState.data.history);
   renderCurrentView();
+  renderInfrastructure(appState.data.infrastructure);
   renderReferences();
+  startInfrastructurePolling();
 }
 
 loadExperience();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pollInfrastructure(); });
 
 $('#archive-list').addEventListener('click', event => {
   const button = event.target.closest('.archive[data-backup-id]');

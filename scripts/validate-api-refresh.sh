@@ -24,6 +24,7 @@ trap cleanup EXIT
 mkdir -p \
   "$TEST_ROOT/api/bootstrap/v1" \
   "$TEST_ROOT/plugins/docker" \
+  "$TEST_ROOT/plugins/service-check" \
   "$TEST_ROOT/scripts" \
   "$TEST_ROOT/state/recovery" \
   "$TEST_ROOT/state/sites" \
@@ -36,6 +37,7 @@ cp "$SOURCE_ROOT/state/sites/LDF.json" "$TEST_ROOT/state/sites/"
 cp "$SOURCE_ROOT/state/recovery/prerequisites.json" "$TEST_ROOT/state/recovery/"
 cp "$SOURCE_ROOT/plugins/docker/refresh-api.sh" "$TEST_ROOT/plugins/docker/"
 cp "$SOURCE_ROOT/plugins/docker/generate-inventory.sh" "$TEST_ROOT/plugins/docker/"
+cp "$SOURCE_ROOT/plugins/service-check/generate-infrastructure.sh" "$TEST_ROOT/plugins/service-check/"
 cp "$SOURCE_ROOT/scripts/init-api.sh" "$TEST_ROOT/scripts/"
 
 cat > "$TEST_ROOT/backup.conf" <<'EOF'
@@ -98,6 +100,7 @@ run_refresh
 run_refresh
 
 jq -e '.resources.inventory == "/api/v1/inventory.json"' "$TEST_ROOT/api/v1/index.json" >/dev/null
+jq -e '.resources.infrastructure == "/api/v1/infrastructure.json"' "$TEST_ROOT/api/v1/index.json" >/dev/null
 jq -e '.inventory_status == "generated" and (.components | length) > 0' "$TEST_ROOT/api/v1/inventory.json" >/dev/null
 
 minimal_path="$TEST_ROOT/inventory-minimal-path"
@@ -114,6 +117,21 @@ jq -e '
   .inventory_status == "generated"
   and any(.components[]; .detected.status == "missing" or .detected.status == "unavailable")
 ' "$TEST_ROOT/minimal-inventory.json" >/dev/null
+
+cat > "$TEST_ROOT/service-check.json" <<'EOF'
+{"generated_at":"2026-08-31T12:00:00-05:00","status":"warning","management_ip":"192.0.2.1","token":"private","sites":[{"site_id":"LDF","name":"Lac du Flambeau","status":"warning","hosts":[{"host_id":"ldf-dockerhost","name":"dockerhost","role":"docker-host","status":"warning","reboot_required":true,"docker":{"status":"healthy","daemon_status":"healthy","projects":[{"project_id":"nginx-proxy-manager","name":"Nginx Proxy Manager","status":"warning","compose_directory":"/private","services":[{"service_id":"db","name":"MariaDB","container_name":"npm-db","status":"healthy","runtime_status":"healthy","image":"mariadb:10.11","update_status":"update_available","local_digest":"sha256:private","remote_digest":"sha256:private"}]}]}}]}]}
+EOF
+HARBR_ROOT="$TEST_ROOT" SERVICE_CHECK_SOURCE="$TEST_ROOT/service-check.json" \
+  "$TEST_ROOT/plugins/service-check/generate-infrastructure.sh" "$TEST_ROOT/infrastructure-generated.json"
+jq -e '.status == "warning" and .summary.image_updates == 1 and .sites[0].hosts[0].docker.projects[0].services[0].runtime_status == "healthy"' "$TEST_ROOT/infrastructure-generated.json" >/dev/null
+for forbidden in local_digest remote_digest image_id management_ip compose_directory token; do
+  ! grep -q "$forbidden" "$TEST_ROOT/infrastructure-generated.json"
+done
+cp "$TEST_ROOT/infrastructure-generated.json" "$TEST_ROOT/infrastructure-before.json"
+if HARBR_ROOT="$TEST_ROOT" SERVICE_CHECK_SOURCE="$TEST_ROOT/missing.json" "$TEST_ROOT/plugins/service-check/generate-infrastructure.sh" "$TEST_ROOT/infrastructure-generated.json"; then
+  echo "Infrastructure adapter unexpectedly accepted a missing source" >&2; exit 1
+fi
+cmp "$TEST_ROOT/infrastructure-before.json" "$TEST_ROOT/infrastructure-generated.json"
 
 for file in "$TEST_ROOT/api/v1/"*.json; do
   jq empty "$file"

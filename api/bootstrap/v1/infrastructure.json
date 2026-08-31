@@ -1,0 +1,8 @@
+{
+  "api_version": "v1",
+  "generated_at": null,
+  "stale_after_seconds": 300,
+  "status": "unknown",
+  "summary": { "sites": 0, "hosts": 0, "services": 0, "healthy_services": 0, "warning_services": 0, "failed_services": 0, "image_updates": 0, "package_updates": 0, "security_updates": 0, "reboots_required": 0 },
+  "sites": []
+}
