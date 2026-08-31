@@ -229,6 +229,7 @@ def validate_documentation() -> None:
         "8. Compare the protected inventory with the restored platform",
         "9. Confirm the Docker Platform is ready for application recovery",
         "10. Identify the next application recovery procedure",
+        "11. Activate normal scheduled operation after recovery",
     ]
     nginx_proxy_manager_headings = [
         "1. Verify prerequisites",
@@ -359,6 +360,7 @@ def validate_documentation() -> None:
                 for unit in ("docker-backup.timer", "service-check.timer", "harbr-infrastructure.service", "harbr-api-refresh.service"):
                     require(unit in services_step, f"Host Recovery service verification is missing: {unit}")
                 require("do not start service-check" in services_step.lower(), "Host Recovery must defer service-check until Harbr exists")
+                require("enable --now" not in services_step and "systemctl start service-check.timer" not in services_step and "systemctl start docker-backup.timer" not in services_step, "Host Recovery must enable timers without activating them during partial recovery")
                 updater_step = "\n".join(sections_by_heading[host_recovery_headings[12]]["paragraphs"])
                 require("service-update --help" in updater_step and "service-update v0.4.0" in updater_step, "Host Recovery must verify service-update with its supported help command")
                 require("service-update --version" not in updater_step, "Host Recovery must not invoke unsupported service-update --version")
@@ -395,6 +397,19 @@ def validate_documentation() -> None:
                 next_step = "\n".join(sections_by_heading[docker_platform_headings[9]]["paragraphs"])
                 require("no authoritative application recovery order" in next_step.lower(), "Docker Platform must not fabricate an application recovery order")
                 require("Manual operator selection required" in next_step, "Docker Platform must require manual selection without authoritative order metadata")
+                require("return to Docker Platform step 11" in next_step, "Docker Platform must defer timer activation until application recovery completes")
+                timer_step = "\n".join(sections_by_heading[docker_platform_headings[10]]["paragraphs"])
+                for marker in (
+                    "systemctl start service-check.timer",
+                    "systemctl start docker-backup.timer",
+                    "systemctl is-active --quiet service-check.timer",
+                    "systemctl is-active --quiet docker-backup.timer",
+                    "systemctl is-enabled --quiet service-check.timer",
+                    "systemctl is-enabled --quiet docker-backup.timer",
+                    "systemctl list-timers --all service-check.timer docker-backup.timer",
+                ):
+                    require(marker in timer_step, f"Docker Platform completed-recovery timer activation is missing: {marker}")
+                require("only after /srv/docker is fully restored" in timer_step and "every required application-specific recovery procedure" in timer_step, "Docker Platform must block timer activation during partial recovery")
             elif is_nginx_proxy_manager:
                 require(entry.get("summary") == "Restore Nginx Proxy Manager and verify that reverse proxy services are operational.", "Nginx Proxy Manager has the wrong summary")
                 prerequisite_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[0]]["paragraphs"])

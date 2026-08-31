@@ -344,11 +344,21 @@
         {
           "heading": "10. Identify the next application recovery procedure",
           "paragraphs": [
-            "Required operator action: Review repository-defined recovery metadata and protected recovery evidence for an authoritative application order. No authoritative application recovery order currently exists in the repository, so record that manual operator selection is required and do not fabricate the first application stack.",
-            "Verification command: printf '%s\\n' 'Next Application Recovery Procedure' 'Manual operator selection required: no authoritative application recovery order is defined.'",
-            "Expected successful result: The command states that manual operator selection is required and does not name an application stack that lacks authoritative ordering evidence.",
-            "If verification fails: Recheck protected recovery material for a newly available authoritative order. If none exists, stop before application restoration and obtain an explicit operator decision based on protected evidence.",
-            "Blocks recovery: Yes. Individual application recovery must wait until an operator selects and records the next stack from authoritative protected evidence."
+            "Required operator action: Review repository-defined recovery metadata and protected recovery evidence for an authoritative application order. No authoritative application recovery order currently exists in the repository, so record that manual operator selection is required and do not fabricate the first application stack. Complete every required application-specific recovery procedure, then return to Docker Platform step 11; do not start normal timers while any required application or /srv/docker restoration remains incomplete.",
+            "Verification command: printf '%s\\n' 'Next Application Recovery Procedure' 'Manual operator selection required: no authoritative application recovery order is defined.' 'After all required application recovery is complete, return to Docker Platform step 11.'",
+            "Expected successful result: The command states that manual operator selection is required, does not name an application stack that lacks authoritative ordering evidence, and directs the operator to return for timer activation only after required application recovery is complete.",
+            "If verification fails: Recheck protected recovery material for a newly available authoritative order. If none exists, stop before application restoration and obtain an explicit operator decision based on protected evidence. Do not continue to step 11 while any platform or application blocker remains.",
+            "Blocks recovery: Yes. Individual application recovery requires an explicit selection, and normal scheduling remains blocked until every required application procedure is complete."
+          ]
+        },
+        {
+          "heading": "11. Activate normal scheduled operation after recovery",
+          "paragraphs": [
+            "Required operator action: Return to this step only after /srv/docker is fully restored, Harbr remains operational, every required application-specific recovery procedure and manual validation is complete, and no recovery blocker remains. Start the already-enabled service-check and docker-backup timers now; they were intentionally left inactive during partial recovery.",
+            "Verification command: cd /srv/docker/harbr && docker compose ps --status running --services | grep -qx harbr-experience && sudo systemctl start service-check.timer && sudo systemctl start docker-backup.timer && systemctl is-active --quiet service-check.timer && systemctl is-active --quiet docker-backup.timer && systemctl is-enabled --quiet service-check.timer && systemctl is-enabled --quiet docker-backup.timer && systemctl list-timers --all service-check.timer docker-backup.timer",
+            "Expected successful result: Harbr remains running, both normal timers are active and enabled in the current boot, and list-timers shows each timer with its next scheduled run. No immediate backup or collector service is forced by this verification beyond normal timer scheduling.",
+            "If verification fails: Stop before declaring normal operation restored. Check for unresolved application or platform recovery blockers, unit definitions, daemon-reload state, enablement, timer status, and journal diagnostics. Do not start docker-backup.timer against a partial /srv/docker tree or start service-check.timer before Harbr exists.",
+            "Blocks recovery: Yes. Completed recovery must not depend on a reboot to activate normal service-check and backup scheduling; both timers must be active, enabled, and show a next run."
           ]
         }
       ]
