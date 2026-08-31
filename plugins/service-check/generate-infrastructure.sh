@@ -52,8 +52,8 @@ jq --argjson stale "$STALE_AFTER_SECONDS" '
       status: ((.status // .runtime_status // "unknown") | sem),
       runtime_status: ((.runtime_status // .status // "unknown") | sem),
       health_status: ((.health_status // .docker_health // "unknown") | sem),
-      image: ((.image // .image_reference // null) | safe_string),
-      update_status: ((.update_status // .image_update_status // "unknown") | upd),
+      image: ((.image.reference? // .image_reference // (if (.image | type) == "string" then .image else null end)) | safe_string),
+      update_status: ((.image.update_status? // .update_status // .image_update_status // "unknown") | upd),
       software_version: ((.software_version // .version // null) | safe_string) };
   def project:
     { project_id: (.project_id // .id // .name), name: (.display_name // .name // .project_id // .id),
