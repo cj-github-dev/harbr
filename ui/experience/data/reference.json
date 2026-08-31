@@ -1,6 +1,6 @@
 {
-  "version": "1.4",
-  "updated_at": "2026-08-05T00:00:00-05:00",
+  "version": "1.5",
+  "updated_at": "2026-08-31T18:15:00-05:00",
   "entries": [
     {
       "id": "host-recovery-prerequisites",
@@ -88,23 +88,53 @@
           ]
         },
         {
-          "heading": "9. Confirm that the host is ready to restore Harbr",
+          "heading": "9. Select, verify, and preserve a backup set",
           "paragraphs": [
-            "Required operator action: First run the automatic host checks. Then manually confirm and record that a specific verified backup archive and its checksum or manifest are available, the trusted Harbr source is available, and the separately protected configuration and secure credentials required for restoration have been recovered. Automatic checks alone do not authorize restoration.",
-            "Verification command: test \"$(hostnamectl --static)\" = dockerhost && sudo -u chris test -w /srv/storage && test -d /srv/storage/backups/docker && find /srv/storage/backups/docker -mindepth 1 -maxdepth 1 -type d -print -quit | grep -q . && systemctl is-active --quiet docker.service && docker compose version && sudo -u chris docker info --format '{{.ServerVersion}}' && printf '%s\\n' 'Automatic checks passed; manual recovery-material confirmation still required'",
-            "Expected successful result: The command exits with status 0, prints the Docker Compose and daemon versions, and explicitly states that automatic checks passed while manual recovery-material confirmation remains required. The host is ready to restore Harbr only after the operator also completes every manual confirmation in this step.",
-            "If verification fails: Run each automatic check separately and return to the corresponding failed step. If automatic checks pass but a selected verified archive, its integrity evidence, trusted source, protected configuration, or secure credentials cannot be confirmed manually, stop and recover that material; do not substitute current container state or an unverified archive.",
-            "Blocks recovery: Yes. Any failed automatic check or incomplete manual recovery-material confirmation means the host is not ready to restore Harbr."
+            "Required operator action: Select one completed backup-set directory under /srv/storage/backups/docker that contains SHA256SUMS, srv-docker.tar.zst, and disaster-recovery-config.tar.zst. Verify the recorded checksums and both archives before restoration. Preserve that selected set unchanged by creating a separate working copy under /srv/storage/recovery-work; never extract over the only backup copy.",
+            "Verification command: read -r -p 'Selected backup-set directory: ' BACKUP_SET && test -f \"$BACKUP_SET/SHA256SUMS\" && test -f \"$BACKUP_SET/srv-docker.tar.zst\" && test -f \"$BACKUP_SET/disaster-recovery-config.tar.zst\" && (cd \"$BACKUP_SET\" && sha256sum --check SHA256SUMS) && tar --zstd --list --file \"$BACKUP_SET/srv-docker.tar.zst\" >/dev/null && tar --zstd --list --file \"$BACKUP_SET/disaster-recovery-config.tar.zst\" >/dev/null && sudo install -d -o chris -g chris -m 0700 /srv/storage/recovery-work && WORKING_SET=/srv/storage/recovery-work/$(basename \"$BACKUP_SET\") && test ! -e \"$WORKING_SET\" && sudo -u chris cp -a \"$BACKUP_SET\" \"$WORKING_SET\" && printf 'Verified working backup set: %s\\n' \"$WORKING_SET\"",
+            "Expected successful result: Every SHA256SUMS entry reports OK, both archives are readable, the original selected backup set is unchanged, and a distinct working backup-set path is printed.",
+            "If verification fails: Stop. Check the selected set, storage health, read permissions, checksum manifest, available working space, and archive transfer. Recover another verified copy if integrity fails; do not repair, overwrite, or extract from the failed source set.",
+            "Blocks recovery: Yes. Host or application files must not be restored until one complete backup set passes checksums and archive-readability verification and has a separate working copy."
           ]
         },
         {
-          "heading": "10. Identify restoring Harbr as the next recovery step",
+          "heading": "10. Restore host-level recovery configuration",
           "paragraphs": [
-            "Required operator action: Proceed only after step 9's automatic checks and manual recovery-material confirmations are complete. Keep the selected verified archive unchanged and identify restoring Harbr from a copy as the next recovery step.",
-            "Verification command: test -d /srv/storage/backups/docker && printf '%s\\n' 'Next recovery step: restore Harbr'",
-            "Expected successful result: The command prints Next recovery step: restore Harbr.",
-            "If verification fails: Recheck the /srv/storage mount and protected backup root, then locate the trusted Harbr source, verified archive, protected configuration, and secure credentials required by the documented restore path.",
-            "Blocks recovery: Yes. Harbr restoration cannot begin until its trusted source and protected recovery material are available."
+            "Required operator action: From the verified working copy, restore disaster-recovery-config.tar.zst into the blank host with numeric ownership, modes, ACLs, and extended attributes preserved. This archive is the authority for host-level backup, service-check, service-update, Harbr publication, and protected rclone configuration; do not display protected file contents.",
+            "Verification command: read -r -p 'Verified working backup-set path: ' WORKING_SET && test -r \"$WORKING_SET/disaster-recovery-config.tar.zst\" && sudo tar --zstd --extract --file \"$WORKING_SET/disaster-recovery-config.tar.zst\" --directory=/ --numeric-owner --acls --xattrs --same-permissions && sudo test -r /etc/docker-backup.conf && sudo test -r /root/.config/rclone/rclone.conf && sudo stat --format='%U:%G %a %n' /root/.config/rclone/rclone.conf",
+            "Expected successful result: Extraction completes without error, the host-level configuration is restored with archived ownership and metadata, and stat reports the protected rclone file without printing its contents.",
+            "If verification fails: Stop and inspect the working copy, archive readability, destination filesystem support for ACLs/xattrs, available space, tar diagnostics, and protected-file modes. Do not weaken credential permissions or extract from the preserved source set.",
+            "Blocks recovery: Yes. Current host services and protected configuration must be restored from the verified disaster-recovery archive before Harbr restoration."
+          ]
+        },
+        {
+          "heading": "11. Reload and verify restored host services",
+          "paragraphs": [
+            "Required operator action: Reload systemd so restored unit files become active configuration. Verify docker-backup.service/timer, service-check.service/timer, harbr-infrastructure.service, and harbr-api-refresh.service. Enable the two timers for their documented schedules, but do not start service-check yet: a successful check invokes harbr-infrastructure.service, which requires /srv/docker/harbr to exist.",
+            "Verification command: sudo systemctl daemon-reload && sudo systemctl enable docker-backup.timer service-check.timer && systemctl cat docker-backup.service docker-backup.timer service-check.service service-check.timer harbr-infrastructure.service harbr-api-refresh.service >/dev/null && systemctl is-enabled --quiet docker-backup.timer && systemctl is-enabled --quiet service-check.timer && systemctl show service-check.timer --property=OnCalendar --value",
+            "Expected successful result: daemon-reload and unit verification succeed, both timers are enabled, and service-check.timer reports its restored 00:00, 08:00, and 16:00 local schedule. service-check has not been manually started during this step.",
+            "If verification fails: Check the restored files under /etc/systemd/system, drop-in directories, ownership and modes, daemon-reload diagnostics, timer definitions, and unit dependency paths. Keep service-check stopped until Harbr is restored.",
+            "Blocks recovery: Yes. The restored host service definitions must be recognized and the timers correctly configured before handoff to Restore Harbr."
+          ]
+        },
+        {
+          "heading": "12. Verify collector, updater, inventory, state, and protected access",
+          "paragraphs": [
+            "Required operator action: Verify the restored service-check inventory and executables, service-update 0.4.0 availability, private state directories, and non-root Harbr publisher access. service-update status.json and history.jsonl may legitimately be absent when no 0.4 operation has occurred. Treat any restored status/history as recovery context, not proof of present health, and never print rclone or private status contents.",
+            "Verification command: sudo jq empty /etc/service-check/inventory.json && sudo test -x /usr/local/sbin/service-check && sudo test -x /usr/local/sbin/service-update && sudo /usr/local/sbin/service-update --version | grep -q '0.4.0' && sudo test -d /var/lib/service-check && sudo test -d /var/lib/service-update && sudo sh -c 'test ! -e /var/lib/service-update/status.json || jq empty /var/lib/service-update/status.json' && sudo sh -c 'test ! -e /var/lib/service-update/history.jsonl || jq -e . /var/lib/service-update/history.jsonl >/dev/null' && sudo -u chris -g harbr-api test -r /var/lib/service-check/status.json && sudo test -r /root/.config/rclone/rclone.conf",
+            "Expected successful result: Inventory JSON is valid, both executables are available, service-update reports 0.4.0, state directories exist, optional updater records are either absent or parseable, the Harbr publisher can read private service-check status, and protected rclone configuration is readable only through its intended privileged path.",
+            "If verification fails: Check archived ownership, ACLs, xattrs, executable modes, the harbr-api group and supplementary access, inventory validity, and whether optional service-update records simply have not been created. Do not fabricate status/history files or expose protected contents.",
+            "Blocks recovery: Yes for inventory, executables, required directories, and publisher access. Absence of optional service-update status/history alone does not block recovery."
+          ]
+        },
+        {
+          "heading": "13. Hand off to Restore Harbr",
+          "paragraphs": [
+            "Required operator action: Confirm the verified working backup set remains available, host-level configuration is restored, systemd has been reloaded, required units and access are verified, and service-check has not been started against a missing Harbr checkout. Proceed next to Restore Harbr using srv-docker.tar.zst from the working copy.",
+            "Verification command: read -r -p 'Verified working backup-set path: ' WORKING_SET && test -r \"$WORKING_SET/srv-docker.tar.zst\" && test -r \"$WORKING_SET/disaster-recovery-config.tar.zst\" && systemctl is-enabled --quiet service-check.timer && test ! -d /srv/docker/harbr && printf '%s\\n' 'Next recovery step: Restore Harbr from srv-docker.tar.zst'",
+            "Expected successful result: Both working archives remain readable, restored timer configuration is enabled without a premature collector run, and the command identifies Restore Harbr as the next step.",
+            "If verification fails: Return to backup-set verification or the corresponding host configuration, service, access, or destination check. If /srv/docker/harbr already exists, determine whether it is an intentional verified restore before proceeding; do not overwrite it blindly.",
+            "Blocks recovery: Yes. Restore Harbr must begin from the verified working archive with host-level prerequisites in place and no ambiguous existing checkout."
           ]
         }
       ]
@@ -115,32 +145,32 @@
       "summary": "Restore Harbr and verify that the recovery console is operational.",
       "sections": [
         {
-          "heading": "1. Locate the verified Harbr recovery source",
+          "heading": "1. Reconfirm the verified working backup set",
           "paragraphs": [
-            "Required operator action: Identify the verified backup or trusted source that will restore Harbr. Confirm its provenance and, when integrity evidence is provided, verify the recorded checksum or manifest before using it.",
-            "Verification command: read -r -p 'Verified Harbr source path: ' HARBR_SOURCE && test -r \"$HARBR_SOURCE\" && stat --format='%n %s bytes' \"$HARBR_SOURCE\"",
-            "Expected successful result: The command reports the recorded source path and size. The operator has also confirmed that the source is trusted and that its available integrity evidence passes.",
-            "If verification fails: Check the /srv/storage mount, source path, read permissions, protected backup catalog, recorded checksum or manifest, and trusted repository access. Do not use an unverified source.",
-            "Blocks recovery: Yes. Harbr must be restored from a readable source whose provenance and available integrity evidence are confirmed."
+            "Required operator action: Continue with the same verified working backup set created during Host Recovery. Recheck SHA256SUMS and srv-docker.tar.zst readability before extracting Harbr; keep the preserved source backup and the working archive unchanged.",
+            "Verification command: read -r -p 'Verified working backup-set path: ' WORKING_SET && test -f \"$WORKING_SET/SHA256SUMS\" && test -f \"$WORKING_SET/srv-docker.tar.zst\" && (cd \"$WORKING_SET\" && sha256sum --check SHA256SUMS) && tar --zstd --list --file \"$WORKING_SET/srv-docker.tar.zst\" | grep -q '^srv/docker/harbr/'",
+            "Expected successful result: Every checksum reports OK and the archive contains the Harbr tree under srv/docker/harbr without modifying either backup copy.",
+            "If verification fails: Stop and return to Host Recovery backup-set selection. Do not use an unreadable archive, bypass checksum failure, or restore over the preserved source.",
+            "Blocks recovery: Yes. Harbr must be restored from the verified srv-docker archive in the selected working backup set."
           ]
         },
         {
           "heading": "2. Restore the Harbr application",
           "paragraphs": [
-            "Required operator action: Restore only the Harbr source into /srv/docker/harbr as chris:chris. Preserve the selected recovery source unchanged and do not restore or start unrelated applications.",
-            "Verification command: cd /srv/docker/harbr && test -f compose.yml && test -d ui/experience && test -x scripts/init-api.sh && test \"$(docker compose config --services)\" = harbr-experience",
-            "Expected successful result: The command exits with status 0 and the Compose definition contains only the harbr-experience service.",
-            "If verification fails: Check the restore destination, ownership and modes, completeness of the Harbr source, executable script permissions, and whether unrelated Compose services were restored into this checkout.",
+            "Required operator action: Extract only srv/docker/harbr from the working srv-docker.tar.zst into a private staging directory, preserving numeric ownership, modes, ACLs, and xattrs, then place that verified tree at /srv/docker/harbr. Do not extract or start unrelated projects at this stage.",
+            "Verification command: read -r -p 'Verified working backup-set path: ' WORKING_SET && HARBR_STAGE=$(mktemp -d /srv/storage/recovery-work/harbr-stage.XXXXXX) && sudo tar --zstd --extract --file \"$WORKING_SET/srv-docker.tar.zst\" --directory=\"$HARBR_STAGE\" --numeric-owner --acls --xattrs --same-permissions 'srv/docker/harbr' && sudo test ! -e /srv/docker/harbr && sudo install -d /srv/docker && sudo mv \"$HARBR_STAGE/srv/docker/harbr\" /srv/docker/harbr && cd /srv/docker/harbr && test -f compose.yml && test -d ui/experience && test -x scripts/init-api.sh && test \"$(docker compose config --services)\" = harbr-experience",
+            "Expected successful result: Only Harbr is restored from the archive, archived filesystem metadata is retained, and its Compose definition contains only harbr-experience.",
+            "If verification fails: Preserve the working archive, remove only the incomplete staging directory after inspection, and check archive paths, destination conflicts, ownership/ACL/xattr support, executable modes, and Compose validity. Never overwrite an existing /srv/docker/harbr without first proving its origin and preserving it.",
             "Blocks recovery: Yes. The expected Harbr application structure must be complete and isolated before configuration or startup."
           ]
         },
         {
-          "heading": "3. Restore the Harbr configuration",
+          "heading": "3. Verify restored host integration and initialize Harbr",
           "paragraphs": [
-            "Required operator action: Restore the protected Harbr configuration and scoped credentials, recreate the documented chris and harbr-api access, then initialize the live API from source-controlled bootstrap data as chris.",
-            "Verification command: cd /srv/docker/harbr && test -r state/sites/LDF.json && sudo -u chris -g harbr-api test -r /etc/harbr/backup-api.conf && sudo -u chris -g chris test -r /var/lib/harbr/rclone/rclone.conf && sudo -u chris -g chris env HARBR_ROOT=/srv/docker/harbr ./scripts/init-api.sh && find api/v1 -maxdepth 1 -type f -name '*.json' -exec jq empty {} +",
-            "Expected successful result: The site and protected configuration are readable by the intended identities, API initialization succeeds, and every initialized live API document parses as JSON.",
-            "If verification fails: Check the LDF site configuration, protected configuration recovery, rclone credential installation, chris and harbr-api identities, group ACLs, ownership of api/v1 and state/.api-build, required commands, and bootstrap JSON.",
+            "Required operator action: Recognize that Host Recovery restored the Harbr-related systemd units and protected host configuration from disaster-recovery-config.tar.zst. Verify the chris and harbr-api access boundary, the restored unit definitions, site configuration, and private service-check read access; then initialize the live API from source-controlled bootstrap data as chris.",
+            "Verification command: cd /srv/docker/harbr && test -r state/sites/LDF.json && getent group harbr-api >/dev/null && id -nG chris | tr ' ' '\\n' | grep -qx harbr-api && sudo -u chris -g harbr-api test -r /var/lib/service-check/status.json && systemctl cat harbr-infrastructure.service harbr-api-refresh.service >/dev/null && sudo -u chris -g chris env HARBR_ROOT=/srv/docker/harbr ./scripts/init-api.sh && find api/v1 -maxdepth 1 -type f -name '*.json' -exec jq empty {} +",
+            "Expected successful result: Stable site data and restored units are present, the non-root publisher has intended group/read access, API initialization succeeds, and every initialized live API document parses as JSON.",
+            "If verification fails: Check disaster-recovery extraction, chris and harbr-api membership, source-file ACLs, restored unit paths, ownership of api/v1 and state/.api-build, required commands, and bootstrap JSON. Do not broaden private status or credential permissions.",
             "Blocks recovery: Yes. Harbr cannot operate as the recovery console without readable site configuration and valid API data."
           ]
         },
@@ -175,33 +205,33 @@
           ]
         },
         {
-          "heading": "7. Verify operator access",
+          "heading": "7. Generate and publish fresh Infrastructure evidence",
           "paragraphs": [
-            "Required operator action: From the operator workstation, use the recorded management IP to open http://<recorded-management-ip>:8088 and confirm the Harbr interface is usable. The command below verifies the same access path without relying on local hostname resolution.",
+            "Required operator action: Disregard service-check status restored from disaster-recovery-config.tar.zst as historical recovery context. Now that Harbr exists and is running, execute a new service-check and verify the full publication chain from private collector status through harbr-infrastructure.service to the sanitized API and Harbr Experience. A warning such as reboot required is acceptable; freshness and successful publication are required.",
+            "Verification command: BEFORE=$(stat --format='%Y' /var/lib/service-check/status.json 2>/dev/null || printf 0) && sudo /usr/local/sbin/service-check && jq empty /var/lib/service-check/status.json && test \"$(stat --format='%Y' /var/lib/service-check/status.json)\" -gt \"$BEFORE\" && systemctl show service-check.service --property=Result --value | grep -qx success && systemctl is-enabled --quiet service-check.timer && systemctl show harbr-infrastructure.service --property=Result --value | grep -qx success && jq -e '.api_version == \"v1\" and .generated_at != null and .stale_after_seconds == 32400 and (.status == \"healthy\" or .status == \"warning\" or .status == \"failure\" or .status == \"unknown\")' /srv/docker/harbr/api/v1/infrastructure.json && curl --fail --silent http://localhost:8088/api/v1/infrastructure.json | jq -e '.api_version == \"v1\" and .generated_at != null and .stale_after_seconds == 32400'",
+            "Expected successful result: service-check writes newer valid private evidence, both oneshot services report successful results, the timer is enabled, valid sanitized Infrastructure JSON with the current 32400-second freshness window is published, and the locally served API exposes that fresh generation. The aggregate may legitimately be warning.",
+            "If verification fails: Check service-check diagnostics, inventory validity, private status ownership and ACLs, the harbr-api supplementary group, harbr-infrastructure.service status, adapter execution, state/.api-build and api/v1 permissions, generated timestamps, and local Nginx access. Do not treat restored status or service-update history as fresh health evidence.",
+            "Blocks recovery: Yes. Infrastructure health need not be green, but fresh collector evidence must traverse the complete publication chain and be visible through Harbr."
+          ]
+        },
+        {
+          "heading": "8. Verify operator access",
+          "paragraphs": [
+            "Required operator action: From the operator workstation, use the management address recorded in protected network documentation to open Harbr and confirm the Recovery Center and Infrastructure section are usable. Do not write that private address into Harbr documentation or API data.",
             "Verification command: read -r -p 'Recorded management IP: ' MANAGEMENT_IP && curl --fail --silent --show-error \"http://$MANAGEMENT_IP:8088/\" | grep -q '<title>Harbr</title>'",
-            "Expected successful result: The command exits with status 0 and the operator can load the Harbr interface through the recorded management IP.",
-            "If verification fails: Check the recorded management IP, workstation route, firewall, port 8088 exposure, Compose port mapping, container state, and whether local access from step 5 still succeeds.",
-            "Blocks recovery: Yes. The operator must be able to reach and use the recovery console through the expected management path."
+            "Expected successful result: The command exits with status 0 and the operator can use Harbr through the recorded management path without that address being published by Harbr.",
+            "If verification fails: Check protected network records, workstation routing, firewall, port 8088 exposure, Compose port mapping, container state, and whether local access from steps 5 through 7 still succeeds.",
+            "Blocks recovery: Yes. The operator must be able to reach the recovery console before broader platform recovery."
           ]
         },
         {
-          "heading": "8. Confirm Harbr is ready to guide recovery",
+          "heading": "9. Confirm Harbr is ready to guide recovery",
           "paragraphs": [
-            "Required operator action: Confirm Harbr is running, the Recovery Center is available, every required recovery-evidence resource in the current API index is readable, and the operator can access the interface through the recorded management IP. Complete this step only when Harbr is ready to guide the next recovery stage.",
-            "Verification command: cd /srv/docker/harbr && docker compose ps --status running --services | grep -qx harbr-experience && curl --fail --silent http://localhost:8088/ | grep -q 'id=\"reference\"' && for resource in $(jq -r '.resources[]' api/v1/index.json); do curl --fail --silent \"http://localhost:8088$resource\" | jq empty || exit 1; done && read -r -p 'Recorded management IP: ' MANAGEMENT_IP && curl --fail --silent --show-error \"http://$MANAGEMENT_IP:8088/\" | grep -q '<title>Harbr</title>' && printf '%s\\n' 'Harbr is ready to guide recovery'",
-            "Expected successful result: The harbr-experience container is running, the Recovery Center is served, every indexed recovery-evidence resource is reachable and valid JSON, operator access through the recorded management IP succeeds, and the command prints Harbr is ready to guide recovery.",
-            "If verification fails: Return to the corresponding startup, Recovery Center, recovery-evidence, or operator-access step. Do not transition to Harbr-guided recovery until the running service, Recovery Center, required readable evidence, and operator access all succeed.",
-            "Blocks recovery: Yes. Harbr is ready to guide the next recovery stage only when every check in this step succeeds."
-          ]
-        },
-        {
-          "heading": "9. Identify the next recovery step",
-          "paragraphs": [
-            "Required operator action: Record the transition into Harbr-guided recovery and identify restoring the Docker Platform as the next recovery procedure.",
-            "Verification command: printf '%s\\n' 'Next Recovery Step' 'Restore the Docker Platform.'",
-            "Expected successful result: The command prints Next Recovery Step followed by Restore the Docker Platform.",
-            "If verification fails: Confirm step 8 completed and communicate the next recovery action explicitly before any unrelated application restoration begins.",
-            "Blocks recovery: No. Harbr is already operational, but Docker Platform restoration must remain the next controlled recovery action."
+            "Required operator action: Confirm Harbr is running, the Recovery Center is available, every indexed API resource parses, fresh Infrastructure evidence is visible, and operator access succeeds. Then identify Docker Platform as the next controlled procedure; do not start unrelated applications yet.",
+            "Verification command: cd /srv/docker/harbr && docker compose ps --status running --services | grep -qx harbr-experience && curl --fail --silent http://localhost:8088/ | grep -q 'id=\"reference\"' && for resource in $(jq -r '.resources[]' api/v1/index.json); do curl --fail --silent \"http://localhost:8088$resource\" | jq empty || exit 1; done && curl --fail --silent http://localhost:8088/api/v1/infrastructure.json | jq -e '.generated_at != null' && printf '%s\\n' 'Next Recovery Step' 'Restore the Docker Platform.'",
+            "Expected successful result: Harbr and its Recovery Center remain available, every indexed resource is valid JSON, freshly generated Infrastructure data is served, and Docker Platform is named as the next step.",
+            "If verification fails: Return to the corresponding startup, Recovery Center, API, fresh service-check publication, or operator-access step. Do not proceed to broader application recovery with stale or unpublished Infrastructure evidence.",
+            "Blocks recovery: Yes. Docker Platform recovery begins only after Harbr is a usable recovery console with fresh Infrastructure publication."
           ]
         }
       ]
@@ -222,33 +252,33 @@
           ]
         },
         {
-          "heading": "2. Review the protected Docker inventory",
+          "heading": "2. Reverify the selected two-artifact backup set",
           "paragraphs": [
-            "Required operator action: Locate the protected recovery evidence that records expected application stacks, containers, images, networks, and persistent-storage locations. Confirm its provenance and integrity, and use it as the authority rather than currently running Docker state.",
-            "Verification command: read -r -p 'Protected Docker inventory path: ' DOCKER_INVENTORY && test -r \"$DOCKER_INVENTORY\" && stat --format='%n %s bytes' \"$DOCKER_INVENTORY\"",
-            "Expected successful result: The command reports a readable protected inventory path and size, and the operator confirms the evidence records the expected Docker projects, containers, images, networks, and storage locations.",
-            "If verification fails: Check the protected recovery catalog, /srv/storage mount, source path, permissions, and recorded checksum or manifest. Do not substitute docker ps, docker images, or other current runtime output for protected inventory evidence.",
-            "Blocks recovery: Yes. The expected Docker platform cannot be restored safely without authoritative protected inventory evidence."
+            "Required operator action: Use the same verified working backup set selected during Host Recovery. Keep the artifact roles explicit: disaster-recovery-config.tar.zst supplied host-level operational configuration, while srv-docker.tar.zst supplies Compose projects, application configuration, the Harbr repository, and bind-mounted persistent application data. Recheck the complete set before broader extraction.",
+            "Verification command: read -r -p 'Verified working backup-set path: ' WORKING_SET && test -f \"$WORKING_SET/SHA256SUMS\" && test -f \"$WORKING_SET/disaster-recovery-config.tar.zst\" && test -f \"$WORKING_SET/srv-docker.tar.zst\" && (cd \"$WORKING_SET\" && sha256sum --check SHA256SUMS) && tar --zstd --list --file \"$WORKING_SET/srv-docker.tar.zst\" >/dev/null",
+            "Expected successful result: Every checksum reports OK, both named artifacts remain present in the working copy, and the /srv/docker archive is readable without changing the preserved source or working archive.",
+            "If verification fails: Stop and return to Host Recovery backup-set selection. Do not substitute current Docker state, a partial archive, or files copied from the running Harbr checkout for verified recovery evidence.",
+            "Blocks recovery: Yes. Broader Docker restoration requires the same complete, verified two-artifact backup set used for host and Harbr recovery."
           ]
         },
         {
-          "heading": "3. Restore the expected Docker directory structure",
+          "heading": "3. Restore the remaining /srv/docker tree without overwriting Harbr",
           "paragraphs": [
-            "Required operator action: Restore or recreate the protected project directories under /srv/docker without starting application stacks. Apply the ownership and permissions recorded for the deployment account and each service.",
-            "Verification command: find /srv/docker -mindepth 1 -maxdepth 1 -type d -printf '%u:%g %m %p\\n' | sort",
-            "Expected successful result: The command lists every required project directory with ownership and modes matching the protected inventory; no unrelated application stack has been started.",
-            "If verification fails: Compare the listing with protected evidence, restore missing directories, correct ownership and modes, and confirm the intended storage is mounted before continuing.",
-            "Blocks recovery: Yes. Missing or incorrectly permissioned project directories prevent reliable configuration and Compose validation."
+            "Required operator action: Harbr is already live from the early selective restore. Extract the remaining srv/docker content from the working archive to / while explicitly excluding srv/docker/harbr, preserving numeric ownership, modes, ACLs, and xattrs. Do not start any restored Compose project, and do not overwrite or replace the live recovery console.",
+            "Verification command: read -r -p 'Verified working backup-set path: ' WORKING_SET && HARBR_REVISION=$(git -C /srv/docker/harbr rev-parse HEAD) && sudo tar --zstd --extract --file \"$WORKING_SET/srv-docker.tar.zst\" --directory=/ --numeric-owner --acls --xattrs --same-permissions --exclude='srv/docker/harbr' --exclude='srv/docker/harbr/*' 'srv/docker' && test \"$(git -C /srv/docker/harbr rev-parse HEAD)\" = \"$HARBR_REVISION\" && cd /srv/docker/harbr && docker compose ps --status running --services | grep -qx harbr-experience && find /srv/docker -mindepth 1 -maxdepth 1 -type d -printf '%u:%g %m %p\\n' | sort",
+            "Expected successful result: Remaining project and bind-mounted data directories are restored with archived filesystem metadata, the live Harbr revision is unchanged and harbr-experience remains running, and no unrelated stack is started.",
+            "If verification fails: Stop before application startup. Preserve the archives, inspect tar diagnostics and destination metadata, return to Restore Harbr if its revision or service changed, and correct only incomplete non-Harbr extraction from verified evidence. Never rerun an extraction that can overwrite the live Harbr checkout.",
+            "Blocks recovery: Yes. The complete /srv/docker platform must be restored without disrupting Harbr or starting applications blindly."
           ]
         },
         {
-          "heading": "4. Restore shared Docker configuration",
+          "heading": "4. Verify restored project and shared configuration",
           "paragraphs": [
-            "Required operator action: Restore the protected shared environment files, network definitions, common configuration, daemon configuration, registry access configuration, and service prerequisites required by multiple stacks. Keep secrets in their protected files and never copy secret values into Harbr.",
-            "Verification command: sudo test ! -e /etc/docker/daemon.json -o -r /etc/docker/daemon.json && find /srv/docker -mindepth 2 -maxdepth 3 -type f \\( -name '.env' -o -name 'compose.yml' -o -name 'compose.yaml' -o -name 'docker-compose.yml' -o -name 'docker-compose.yaml' \\) -printf '%u:%g %m %p\\n' | sort",
-            "Expected successful result: Any restored daemon configuration is readable, and the command lists the expected shared and project configuration paths with protected ownership and modes without displaying their contents.",
-            "If verification fails: Compare paths, ownership, and modes with protected recovery material; restore missing configuration through the secure process and validate daemon configuration before restarting Docker. Do not print environment, registry credential, or secret-file contents.",
-            "Blocks recovery: Yes. Required shared configuration and protected credentials must be present and readable by their intended identities."
+            "Required operator action: Verify Compose definitions, environment-file paths, shared configuration, and bind-mounted application data restored from srv-docker.tar.zst without displaying protected contents. Keep host-level backup, collector, publisher, updater, systemd, and rclone configuration associated with the separately restored disaster-recovery-config.tar.zst.",
+            "Verification command: find /srv/docker -mindepth 2 -maxdepth 3 -type f \\( -name '.env' -o -name 'compose.yml' -o -name 'compose.yaml' -o -name 'docker-compose.yml' -o -name 'docker-compose.yaml' \\) -printf '%u:%g %m %p\\n' | sort && sudo test -r /etc/docker-backup.conf && sudo test -r /etc/service-check/inventory.json && sudo test -r /root/.config/rclone/rclone.conf",
+            "Expected successful result: Expected project configuration paths are listed with restored ownership and modes without content disclosure, and the separately restored host-level backup, service-check, and protected rclone files remain readable through intended privileged access.",
+            "If verification fails: Determine whether the missing item belongs to srv-docker.tar.zst or disaster-recovery-config.tar.zst, then return to the corresponding verified extraction step. Do not print environment files, private collector state, registry credentials, rclone configuration, or secret-file contents.",
+            "Blocks recovery: Yes. Artifact ownership must remain clear and every required project/shared configuration path must be present before Compose evaluation or application startup."
           ]
         },
         {
