@@ -176,7 +176,8 @@ def validate_archives() -> None:
 
 def validate_documentation() -> None:
     reference = load_json(REFERENCE_PATH)
-    require(reference.get("version") == "1.4", "Recovery Center reference version must be 1.4")
+    require(reference.get("version") == "1.5", "Recovery Center reference version must be 1.5")
+    require(reference.get("updated_at") == "2026-08-31T14:23:29-05:00", "Recovery Center updated_at must use the actual Chicago-local timestamp")
     entries = reference.get("entries", [])
     ids = {entry.get("id") for entry in entries}
     host_recovery_id = "host-recovery-prerequisites"
@@ -199,31 +200,36 @@ def validate_documentation() -> None:
         "6. Verify that /srv/storage is writable",
         "7. Install or verify the required host software",
         "8. Install or verify Docker Engine and Docker Compose",
-        "9. Confirm that the host is ready to restore Harbr",
-        "10. Identify restoring Harbr as the next recovery step",
+        "9. Select, verify, and preserve a backup set",
+        "10. Restore host-level recovery configuration",
+        "11. Recreate the harbr-api identity boundary",
+        "12. Reload and verify restored host services",
+        "13. Verify collector, updater, inventory, state, and protected access",
+        "14. Hand off to Restore Harbr",
     ]
     restore_harbr_headings = [
-        "1. Locate the verified Harbr recovery source",
+        "1. Reconfirm the verified working backup set",
         "2. Restore the Harbr application",
-        "3. Restore the Harbr configuration",
+        "3. Verify restored host integration and initialize Harbr",
         "4. Start Harbr",
         "5. Verify the Recovery Center is available",
         "6. Verify recovery evidence",
-        "7. Verify operator access",
-        "8. Confirm Harbr is ready to guide recovery",
-        "9. Identify the next recovery step",
+        "7. Generate and publish fresh Infrastructure evidence",
+        "8. Verify operator access",
+        "9. Confirm Harbr is ready to guide recovery",
     ]
     docker_platform_headings = [
         "1. Verify Harbr remains operational",
-        "2. Review the protected Docker inventory",
-        "3. Restore the expected Docker directory structure",
-        "4. Restore shared Docker configuration",
+        "2. Reverify the selected two-artifact backup set",
+        "3. Restore the remaining /srv/docker tree without overwriting Harbr",
+        "4. Verify restored project and shared configuration",
         "5. Restore required Docker networks",
         "6. Verify Docker storage paths and permissions",
         "7. Verify Docker Compose projects can be evaluated",
         "8. Compare the protected inventory with the restored platform",
         "9. Confirm the Docker Platform is ready for application recovery",
         "10. Identify the next application recovery procedure",
+        "11. Activate normal scheduled operation after recovery",
     ]
     nginx_proxy_manager_headings = [
         "1. Verify prerequisites",
@@ -337,10 +343,27 @@ def validate_documentation() -> None:
                 require(ssh_step.index("'id -un'") < ssh_step.index("'hostnamectl --static'"), "Host Recovery must authenticate over SSH before verifying the hostname")
                 docker_step = "\n".join(sections_by_heading[host_recovery_headings[7]]["paragraphs"])
                 require("sudo -u chris docker info" in docker_step, "Host Recovery must prove Docker daemon access as chris")
-                readiness_step = "\n".join(sections_by_heading[host_recovery_headings[8]]["paragraphs"])
-                require("Automatic checks alone do not authorize restoration" in readiness_step, "Host Recovery must distinguish automatic checks from restore authorization")
-                for material in ("verified backup archive", "trusted Harbr source", "protected configuration", "secure credentials"):
-                    require(material in readiness_step, f"Host Recovery manual readiness confirmation is missing: {material}")
+                backup_step = "\n".join(sections_by_heading[host_recovery_headings[8]]["paragraphs"])
+                for material in ("SHA256SUMS", "srv-docker.tar.zst", "disaster-recovery-config.tar.zst", "working copy"):
+                    require(material in backup_step, f"Host Recovery backup-set verification is missing: {material}")
+                host_config_step = "\n".join(sections_by_heading[host_recovery_headings[9]]["paragraphs"])
+                for marker in ("--numeric-owner", "--acls", "--xattrs", "/root/.config/rclone/rclone.conf"):
+                    require(marker in host_config_step, f"Host Recovery disaster-recovery extraction is missing: {marker}")
+                identity_step = "\n".join(sections_by_heading[host_recovery_headings[10]]["paragraphs"])
+                identity_command = sections_by_heading[host_recovery_headings[10]]["paragraphs"][1]
+                for marker in ("stat --format='%g' /var/lib/service-check/status.json", "getent group \"$ARCHIVED_HARBR_GID\"", "groupadd --gid", "usermod --append --groups harbr-api chris", "sudo -u chris -g harbr-api test -r"):
+                    require(marker in identity_step, f"Host Recovery harbr-api reconstruction is missing: {marker}")
+                for forbidden in ("groupadd harbr-api", "chmod", "chgrp"):
+                    require(forbidden not in identity_command, f"Host Recovery harbr-api reconstruction uses an unsafe shortcut: {forbidden}")
+                require("test -z \"$GID_OWNER\" || test \"$GID_OWNER\" = harbr-api" in identity_step, "Host Recovery must block incompatible archived-GID collisions")
+                services_step = "\n".join(sections_by_heading[host_recovery_headings[11]]["paragraphs"])
+                for unit in ("docker-backup.timer", "service-check.timer", "harbr-infrastructure.service", "harbr-api-refresh.service"):
+                    require(unit in services_step, f"Host Recovery service verification is missing: {unit}")
+                require("do not start service-check" in services_step.lower(), "Host Recovery must defer service-check until Harbr exists")
+                require("enable --now" not in services_step and "systemctl start service-check.timer" not in services_step and "systemctl start docker-backup.timer" not in services_step, "Host Recovery must enable timers without activating them during partial recovery")
+                updater_step = "\n".join(sections_by_heading[host_recovery_headings[12]]["paragraphs"])
+                require("service-update --help" in updater_step and "service-update v0.4.0" in updater_step, "Host Recovery must verify service-update with its supported help command")
+                require("service-update --version" not in updater_step, "Host Recovery must not invoke unsupported service-update --version")
             elif is_restore_harbr:
                 require(entry.get("summary") == "Restore Harbr and verify that the recovery console is operational.", "Restore Harbr has the wrong summary")
                 application_step = "\n".join(sections_by_heading[restore_harbr_headings[1]]["paragraphs"])
@@ -349,15 +372,22 @@ def validate_documentation() -> None:
                 require('entries[0].id == "host-recovery-prerequisites"' in center_step, "Restore Harbr must verify Host Recovery availability")
                 evidence_step = "\n".join(sections_by_heading[restore_harbr_headings[5]]["paragraphs"])
                 require("do not infer or calculate confidence" in evidence_step, "Restore Harbr must preserve explicit evidence states")
-                guidance_step = "\n".join(sections_by_heading[restore_harbr_headings[7]]["paragraphs"])
-                for marker in ("harbr-experience", "Recovery Center", "api/v1/index.json", "MANAGEMENT_IP", "Harbr is ready to guide recovery"):
+                infrastructure_step = "\n".join(sections_by_heading[restore_harbr_headings[6]]["paragraphs"])
+                for marker in ("systemctl start service-check.service", "PRIVATE_BEFORE", "PUBLIC_BEFORE", "PRIVATE_AFTER", "PUBLIC_AFTER", "/var/lib/service-check/status.json", "harbr-infrastructure.service", "api/v1/infrastructure.json", "stale_after_seconds == 32400", "warning"):
+                    require(marker in infrastructure_step, f"Restore Harbr fresh Infrastructure verification is missing: {marker}")
+                require("sudo /usr/local/sbin/service-check" not in infrastructure_step, "Restore Harbr must run service-check through systemd OnSuccess")
+                guidance_step = "\n".join(sections_by_heading[restore_harbr_headings[8]]["paragraphs"])
+                for marker in ("harbr-experience", "Recovery Center", "api/v1/index.json", "infrastructure.json"):
                     require(marker in guidance_step, f"Restore Harbr guidance-readiness check is missing: {marker}")
                 next_step = "\n".join(sections_by_heading[restore_harbr_headings[8]]["paragraphs"])
                 require("Next Recovery Step" in next_step and "Restore the Docker Platform." in next_step, "Restore Harbr must identify the next recovery step")
             elif is_docker_platform:
                 require(entry.get("summary") == "Restore and verify the shared Docker environment required before application recovery can begin.", "Docker Platform has the wrong summary")
                 inventory_step = "\n".join(sections_by_heading[docker_platform_headings[1]]["paragraphs"])
-                require("Do not substitute docker ps" in inventory_step, "Docker Platform must treat protected evidence as authoritative")
+                for artifact in ("disaster-recovery-config.tar.zst", "srv-docker.tar.zst", "SHA256SUMS"):
+                    require(artifact in inventory_step, f"Docker Platform backup-set verification is missing: {artifact}")
+                restore_step = "\n".join(sections_by_heading[docker_platform_headings[2]]["paragraphs"])
+                require("--exclude='srv/docker/harbr'" in restore_step and "--acls" in restore_step and "--xattrs" in restore_step, "Docker Platform must preserve live Harbr and archived filesystem metadata")
                 commands = "\n".join(section["paragraphs"][1] for section in sections)
                 for forbidden_command in ("docker compose up", "docker compose start", "docker start", "docker restart"):
                     require(forbidden_command not in commands, f"Docker Platform must not start application stacks: {forbidden_command}")
@@ -367,6 +397,19 @@ def validate_documentation() -> None:
                 next_step = "\n".join(sections_by_heading[docker_platform_headings[9]]["paragraphs"])
                 require("no authoritative application recovery order" in next_step.lower(), "Docker Platform must not fabricate an application recovery order")
                 require("Manual operator selection required" in next_step, "Docker Platform must require manual selection without authoritative order metadata")
+                require("return to Docker Platform step 11" in next_step, "Docker Platform must defer timer activation until application recovery completes")
+                timer_step = "\n".join(sections_by_heading[docker_platform_headings[10]]["paragraphs"])
+                for marker in (
+                    "systemctl start service-check.timer",
+                    "systemctl start docker-backup.timer",
+                    "systemctl is-active --quiet service-check.timer",
+                    "systemctl is-active --quiet docker-backup.timer",
+                    "systemctl is-enabled --quiet service-check.timer",
+                    "systemctl is-enabled --quiet docker-backup.timer",
+                    "systemctl list-timers --all service-check.timer docker-backup.timer",
+                ):
+                    require(marker in timer_step, f"Docker Platform completed-recovery timer activation is missing: {marker}")
+                require("only after /srv/docker is fully restored" in timer_step and "every required application-specific recovery procedure" in timer_step, "Docker Platform must block timer activation during partial recovery")
             elif is_nginx_proxy_manager:
                 require(entry.get("summary") == "Restore Nginx Proxy Manager and verify that reverse proxy services are operational.", "Nginx Proxy Manager has the wrong summary")
                 prerequisite_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[0]]["paragraphs"])
