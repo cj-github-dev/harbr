@@ -597,8 +597,13 @@ def validate_documentation() -> None:
                 build_step = "\n".join(sections_by_heading[genmon_recovery_headings[4]]["paragraphs"])
                 require("not an update" in build_step and "missing base image" in build_step, "GenMon rebuild must distinguish recovery from base-image retrieval and updating")
                 infrastructure_step = "\n".join(sections_by_heading[genmon_recovery_headings[8]]["paragraphs"])
-                for marker in ("GENMON_PRIVATE_BEFORE", "GENMON_PUBLIC_BEFORE", "GENMON_PRIVATE_AFTER", "GENMON_PUBLIC_AFTER", "runtime_status == \"healthy\"", "current", "update_available"):
+                for marker in ("GENMON_PRIVATE_BEFORE", "GENMON_PUBLIC_BEFORE", "GENMON_PRIVATE_AFTER", "GENMON_PUBLIC_AFTER", "GENMON_INFRASTRUCTURE_FILTER", "runtime_status == \"healthy\"", "current", "update_available"):
                     require(marker in infrastructure_step, f"GenMon Infrastructure verification is missing: {marker}")
+                genmon_filter = 'any(.sites[]; any(.hosts[]; .docker != null and any(.docker.projects[]; .project_id == "genmon" and .status == "healthy" and any(.services[]; .service_id == "genmon" and .runtime_status == "healthy" and .image == "ldf-genmon:latest" and (.update_status == "current" or .update_status == "update_available")))))'
+                require(genmon_filter in infrastructure_step, "GenMon recovery must use the validated Infrastructure v1 predicate")
+                refresh_validator = (ROOT / "scripts" / "validate-api-refresh.sh").read_text(encoding="utf-8")
+                require(genmon_filter in refresh_validator, "Infrastructure refresh validation must execute the GenMon recovery predicate")
+                require("service-check-genmon-update.json" in refresh_validator, "GenMon Infrastructure validation must exercise update_available")
                 require("sudo /usr/local/sbin/service-check" not in infrastructure_step, "GenMon must preserve the service-check systemd publication chain")
                 require("printenv" not in commands and "Config.Env" not in commands and "cat .env" not in commands and "cat /run/secrets" not in commands, "GenMon verification must not expose protected data")
             elif is_jellyfin_recovery:
