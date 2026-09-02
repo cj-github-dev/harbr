@@ -1,6 +1,16 @@
 {
-  "version": "1.5",
-  "updated_at": "2026-08-31T14:23:29-05:00",
+  "version": "1.6",
+  "updated_at": "2026-09-02T10:24:55-05:00",
+  "display_order": [
+    "host-recovery-prerequisites",
+    "restore-harbr",
+    "docker-platform",
+    "nginx-proxy-manager",
+    "pihole-recovery",
+    "genmon-recovery",
+    "home-assistant-recovery",
+    "jellyfin-recovery"
+  ],
   "entries": [
     {
       "id": "host-recovery-prerequisites",
@@ -573,6 +583,113 @@
               "Expected successful result: The Pi-hole service remains running, a host-side external-domain query through the reused Pi-hole listener succeeds, all manual validations are complete, and the command states that dependable local DNS has been restored.",
               "If verification fails: Return to the failed container, local DNS, interface, upstream DNS, persistent-data, network, or manual-validation step. Do not authorize later application recovery while any DNS blocker remains.",
               "Blocks recovery: Yes. Later application recovery must wait until dependable local DNS and required manual Pi-hole state are fully validated."
+            ]
+          }
+        ]
+      },
+      {
+        "id": "genmon-recovery",
+        "title": "GenMon Recovery",
+        "summary": "Restore GenMon from its protected local source checkout and verify generator monitoring without performing an application update.",
+        "sections": [
+          {
+            "heading": "1. Verify GenMon recovery prerequisites",
+            "paragraphs": [
+              "Required operator action: Complete Host Recovery, Restore Harbr, and Docker Platform first. Confirm their manual completion records, keep normal timers inactive during partial recovery, and use one dedicated Bash shell through step 10.",
+              "Verification command: cd /srv/docker/harbr && docker compose ps --status running -q harbr-experience | grep -q . && jq -e '.entries[0].id == \"host-recovery-prerequisites\" and .entries[1].id == \"restore-harbr\" and .entries[2].id == \"docker-platform\"' ui/experience/data/reference.json > /dev/null && systemctl is-active --quiet docker && sudo -u chris docker info > /dev/null && printf '%s\\n' 'Manual procedure completion confirmation required: Host Recovery, Restore Harbr, and Docker Platform steps 1-10 passed.'",
+              "Expected successful result: Harbr and Docker are operational, the prerequisite procedures are available, Docker access works as chris, and the operator confirms their recovery evidence while scheduled timers remain deferred.",
+              "If verification fails: Return to the named prerequisite and resolve every blocker. Do not restore or start GenMon on a partial host or before Harbr can guide and publish recovery evidence.",
+              "Blocks recovery: Yes. GenMon requires a recovered host, Harbr, and Docker platform."
+            ]
+          },
+          {
+            "heading": "2. Restore the protected GenMon project",
+            "paragraphs": [
+              "Required operator action: Reuse the verified working backup set. Confirm srv-docker.tar.zst and its checksum, prove its authoritative path is docker/genmon, and restore that subtree into /srv/docker without overwriting an existing GenMon tree. Do not clone, fetch, pull, or substitute a registry image.",
+              "Verification command: test -n \"$WORKING_SET\" && cd \"$WORKING_SET\" && sha256sum --check --strict --ignore-missing SHA256SUMS && tar --zstd --list --file srv-docker.tar.zst | grep -q '^docker/genmon/' && test ! -e /srv/docker/genmon && GENMON_STAGE=$(mktemp -d) && chmod 700 \"$GENMON_STAGE\" && sudo tar --zstd --extract --file srv-docker.tar.zst --directory \"$GENMON_STAGE\" --numeric-owner --acls --xattrs 'docker/genmon' && sudo install -d /srv/docker && sudo mv \"$GENMON_STAGE/docker/genmon\" /srv/docker/genmon && rmdir \"$GENMON_STAGE/docker\" \"$GENMON_STAGE\"",
+              "Expected successful result: The verified archive contains docker/genmon, the project lands at /srv/docker/genmon with archived ownership, ACLs, and extended attributes, and no existing project is overwritten.",
+              "If verification fails: Revalidate the backup set, checksum, space, mount, and archived path. Do not extract a guessed path, create empty state, clone master, or pull ldf-genmon:latest.",
+              "Blocks recovery: Yes. The protected GenMon project must be restored intact from srv-docker.tar.zst."
+            ]
+          },
+          {
+            "heading": "3. Verify recovery-critical files and persistent data",
+            "paragraphs": [
+              "Required operator action: Verify compose.yaml, the local Dockerfile, the application Git checkout, persistent configuration, and logs without displaying configuration contents, credentials, or logs.",
+              "Verification command: test -f /srv/docker/genmon/compose.yaml && test -f /srv/docker/genmon/Dockerfile && test -d /srv/docker/genmon/app/.git && test -d /srv/docker/genmon/config && test -r /srv/docker/genmon/config && test -d /srv/docker/genmon/logs && test -w /srv/docker/genmon/logs && find /srv/docker/genmon/config -mindepth 1 -maxdepth 2 -print -quit | grep -q . && stat --format='%U:%G %a %n' /srv/docker/genmon /srv/docker/genmon/app /srv/docker/genmon/config /srv/docker/genmon/logs && docker compose -f /srv/docker/genmon/compose.yaml config --quiet",
+              "Expected successful result: Every critical path exists, configuration is non-empty and readable, logs are writable, metadata is visible without content disclosure, and Compose validates without starting anything.",
+              "If verification fails: Restore missing state from the verified archive and correct ownership or modes only from authoritative evidence. Do not initialize fresh configuration, display files, weaken permissions, or start GenMon.",
+              "Blocks recovery: Yes. GenMon must not start without restored source, Compose definition, configuration, and log storage."
+            ]
+          },
+          {
+            "heading": "4. Verify the restored GenMon Git checkout",
+            "paragraphs": [
+              "Required operator action: Prove that app is the backed-up GenMon repository on master, record its recovered HEAD and working-tree state, and do not contact the remote or alter the checkout.",
+              "Verification command: test \"$(git -C /srv/docker/genmon/app remote get-url origin)\" = 'https://github.com/jgyates/genmon.git' && test \"$(git -C /srv/docker/genmon/app branch --show-current)\" = master && GENMON_RECOVERED_HEAD=$(git -C /srv/docker/genmon/app rev-parse --verify HEAD) && git -C /srv/docker/genmon/app status --short && printf 'Recovered GenMon HEAD: %s\\n' \"$GENMON_RECOVERED_HEAD\"",
+              "Expected successful result: The restored checkout identifies the authoritative origin and master branch, HEAD is recorded, and backed-up working-tree differences remain visible without fetch, pull, reset, or checkout.",
+              "If verification fails: Restore the checkout, including .git, from the verified archive. Do not clone a replacement, discard local differences, advance master, or infer a revision.",
+              "Blocks recovery: Yes. Archived Git metadata is required to reproduce the protected local image."
+            ]
+          },
+          {
+            "heading": "5. Rebuild the protected local GenMon image",
+            "paragraphs": [
+              "Required operator action: Build service genmon from restored Compose, Dockerfile, and source. This reproduces the recovery point, not an update. Docker may retrieve a missing base image declared by the Dockerfile, but must not fetch GenMon source or pull ldf-genmon:latest.",
+              "Verification command: cd /srv/docker/genmon && docker compose -f compose.yaml build genmon && docker image inspect ldf-genmon:latest --format '{{.Id}}' | grep -q '^sha256:'",
+              "Expected successful result: Docker builds ldf-genmon:latest locally from restored source and the resulting image has an inspectable ID.",
+              "If verification fails: Check the Dockerfile, build context, source, resources, and declared base-image availability. Do not git pull, run service-update, change source, or use a registry application image.",
+              "Blocks recovery: Yes. GenMon must run an image built from its protected source revision."
+            ]
+          },
+          {
+            "heading": "6. Start GenMon from the restored project",
+            "paragraphs": [
+              "Required operator action: Start only service genmon from /srv/docker/genmon/compose.yaml after restoration and build checks pass.",
+              "Verification command: cd /srv/docker/genmon && docker compose -f compose.yaml up -d genmon && GENMON_CONTAINER_ID=$(docker compose -f compose.yaml ps -q genmon) && test -n \"$GENMON_CONTAINER_ID\" && test \"$(docker inspect --format '{{.Name}}' \"$GENMON_CONTAINER_ID\")\" = /ldf-genmon",
+              "Expected successful result: Compose starts service genmon and resolves it to container ldf-genmon.",
+              "If verification fails: Inspect scoped status and a restricted recent log window, then correct only restored build, mount, network, port, or permission blockers. Do not expose environment values or credentials.",
+              "Blocks recovery: Yes. Runtime validation requires the restored container to start."
+            ]
+          },
+          {
+            "heading": "7. Verify the GenMon runtime contract",
+            "paragraphs": [
+              "Required operator action: Verify GenMon remains running, uses ldf-genmon:latest, publishes 8000:8000, and retains the Compose restart configuration. Do not print environment values.",
+              "Verification command: test -n \"$(docker compose -f /srv/docker/genmon/compose.yaml ps --status running -q genmon)\" && test \"$(docker inspect --format '{{.Config.Image}}' \"$GENMON_CONTAINER_ID\")\" = ldf-genmon:latest && docker port \"$GENMON_CONTAINER_ID\" 8000/tcp | grep -Eq '(^|:)8000$' && test \"$(docker inspect --format '{{.HostConfig.RestartPolicy.Name}}' \"$GENMON_CONTAINER_ID\")\" = unless-stopped && GENMON_RESTARTS_BEFORE=$(docker inspect --format '{{.RestartCount}}' \"$GENMON_CONTAINER_ID\") && sleep 5 && test \"$(docker inspect --format '{{.RestartCount}}' \"$GENMON_CONTAINER_ID\")\" = \"$GENMON_RESTARTS_BEFORE\"",
+              "Expected successful result: ldf-genmon stays running without a restart loop, uses the locally built image, publishes port 8000, and has restart policy unless-stopped.",
+              "If verification fails: Check protected Compose, port conflicts, resources, and restricted recent logs. Do not edit Compose merely to satisfy verification.",
+              "Blocks recovery: Yes. An unstable container or incorrect image, port, or restart contract is not recovered."
+            ]
+          },
+          {
+            "heading": "8. Verify persistent mounts and GenMon HTTP",
+            "paragraphs": [
+              "Required operator action: Verify restored configuration and log bind mounts by exact source and destination, then perform a local unauthenticated availability check without displaying response bodies, configuration, or logs.",
+              "Verification command: docker inspect \"$GENMON_CONTAINER_ID\" | jq -e '.[0].Mounts as $m | any($m[]; .Source == \"/srv/docker/genmon/config\" and .Destination == \"/etc/genmon\") and any($m[]; .Source == \"/srv/docker/genmon/logs\" and .Destination == \"/var/log\")' > /dev/null && GENMON_HTTP_STATUS=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/) && case \"$GENMON_HTTP_STATUS\" in 2??|3??) ;; *) false ;; esac",
+              "Expected successful result: ./config mounts at /etc/genmon, ./logs mounts at /var/log, and GenMon returns a success or redirect response on local port 8000.",
+              "If verification fails: Correct the restored mount, filesystem access, application startup, or publication from protected evidence. Do not print configuration, logs, bodies, secrets, or credentials.",
+              "Blocks recovery: Yes. Restored persistent state and a responding application are required."
+            ]
+          },
+          {
+            "heading": "9. Refresh and verify Infrastructure evidence",
+            "paragraphs": [
+              "Required operator action: Run the collector through service-check.service so systemd OnSuccess publishes fresh Infrastructure evidence. Prove private and public resources changed, then verify GenMon. update_available for a recovered historical Git revision is maintenance evidence, not failed recovery.",
+              "Verification command: GENMON_PRIVATE_BEFORE=$(stat --format='%Y' /var/lib/service-check/status.json 2> /dev/null || printf 0) && GENMON_PUBLIC_BEFORE=$(stat --format='%Y' /srv/docker/harbr/api/v1/infrastructure.json 2> /dev/null || printf 0) && sudo systemctl start service-check.service && GENMON_PRIVATE_AFTER=$(stat --format='%Y' /var/lib/service-check/status.json) && for attempt in {1..30}; do GENMON_PUBLIC_AFTER=$(stat --format='%Y' /srv/docker/harbr/api/v1/infrastructure.json 2> /dev/null || printf 0); test \"$GENMON_PUBLIC_AFTER\" -gt \"$GENMON_PUBLIC_BEFORE\" && break; sleep 1; done && test \"$GENMON_PRIVATE_AFTER\" -gt \"$GENMON_PRIVATE_BEFORE\" && test \"$GENMON_PUBLIC_AFTER\" -gt \"$GENMON_PUBLIC_BEFORE\" && test \"$(systemctl show service-check.service --property=Result --value)\" = success && test \"$(systemctl show harbr-infrastructure.service --property=Result --value)\" = success && jq -e '.sites[].hosts[].docker.projects[] | select(.project_id == \"genmon\") | .status == \"healthy\" and any(.services[]; .service_id == \"genmon\" and .runtime_status == \"healthy\" and .image == \"ldf-genmon:latest\" and (.update_status == \"current\" or .update_status == \"update_available\"))' /srv/docker/harbr/api/v1/infrastructure.json > /dev/null && curl --fail --silent http://127.0.0.1/api/v1/infrastructure.json | jq -e '.sites[].hosts[].docker.projects[] | select(.project_id == \"genmon\")' > /dev/null",
+              "Expected successful result: Collection and publication succeed, both files are fresh, locally served Infrastructure includes healthy GenMon using ldf-genmon:latest, and image status is current or an understood update_available signal.",
+              "If verification fails: Diagnose scoped collection, publication, timestamps, JSON, route, or runtime. Do not hide an update warning by changing the recovered revision or expose private status publicly.",
+              "Blocks recovery: Yes for stale or failed evidence or unhealthy runtime. No for update_available alone when the protected revision runs correctly."
+            ]
+          },
+          {
+            "heading": "10. Confirm recovery and separate future updates",
+            "paragraphs": [
+              "Required operator action: Reconfirm revision, runtime, mounts, and HTTP, then record recovery complete. Any later service-update git-build is separate maintenance: take a fresh backup, validate the commit and fast-forward, rebuild and recreate, recheck runtime and behavior, and preserve service-check status history. Do not update during recovery.",
+              "Verification command: test \"$(git -C /srv/docker/genmon/app rev-parse --verify HEAD)\" = \"$GENMON_RECOVERED_HEAD\" && test -n \"$(docker compose -f /srv/docker/genmon/compose.yaml ps --status running -q genmon)\" && docker inspect \"$GENMON_CONTAINER_ID\" | jq -e '.[0].Mounts as $m | any($m[]; .Destination == \"/etc/genmon\") and any($m[]; .Destination == \"/var/log\")' > /dev/null && case \"$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/)\" in 2??|3??) ;; *) false ;; esac && printf '%s\\n' 'GenMon recovery complete at the protected Git revision.' 'Future git-build update remains separate backed-up maintenance.'",
+              "Expected successful result: HEAD is unchanged, GenMon runs with both mounts and a responding endpoint, and completion keeps recovery distinct from update maintenance.",
+              "If verification fails: Return to the failed restoration, Git, build, runtime, mount, HTTP, or Infrastructure step. Schedule future updates separately with a fresh backup and full git-build validation.",
+              "Blocks recovery: Yes. A newer upstream commit is not a recovery prerequisite, but protected state and revision must run and verify."
             ]
           }
         ]

@@ -36,6 +36,7 @@ REQUIRED_GUIDES = {
     "docker-platform",
     "nginx-proxy-manager",
     "pihole-recovery",
+    "genmon-recovery",
     "jellyfin-recovery",
     "home-assistant-recovery",
     "restore-harbr",
@@ -91,6 +92,10 @@ def validate_internal_resources() -> None:
         require(path.is_file(), f"Missing internal resource: {url}")
 
     html = HTML_PATH.read_text(encoding="utf-8")
+    require("Reference Center" not in html, "The user-facing interface must use Recovery Center terminology")
+    require(html.count("Recovery Center") >= 4, "Recovery Center labels are incomplete")
+    app = APP_PATH.read_text(encoding="utf-8")
+    require("documentationResult.value.display_order" in app, "Recovery Center must render the reference-data display order")
     for resource in ("/config/confidence-ring.generated.css", "/styles.css", "/app.js", "/assets/harbr-mark.svg"):
         require(resource in html, f"Missing HTML resource link: {resource}")
         path = ROOT / "ui" / "experience" / resource.lstrip("/")
@@ -176,8 +181,8 @@ def validate_archives() -> None:
 
 def validate_documentation() -> None:
     reference = load_json(REFERENCE_PATH)
-    require(reference.get("version") == "1.5", "Recovery Center reference version must be 1.5")
-    require(reference.get("updated_at") == "2026-08-31T14:23:29-05:00", "Recovery Center updated_at must use the actual Chicago-local timestamp")
+    require(reference.get("version") == "1.6", "Recovery Center reference version must be 1.6")
+    require(reference.get("updated_at") == "2026-09-02T10:24:55-05:00", "Recovery Center updated_at must use the actual Chicago-local timestamp")
     entries = reference.get("entries", [])
     ids = {entry.get("id") for entry in entries}
     host_recovery_id = "host-recovery-prerequisites"
@@ -185,6 +190,7 @@ def validate_documentation() -> None:
     docker_platform_id = "docker-platform"
     nginx_proxy_manager_id = "nginx-proxy-manager"
     pihole_recovery_id = "pihole-recovery"
+    genmon_recovery_id = "genmon-recovery"
     jellyfin_recovery_id = "jellyfin-recovery"
     home_assistant_recovery_id = "home-assistant-recovery"
     placeholder_paragraphs = [
@@ -255,6 +261,18 @@ def validate_documentation() -> None:
         "9. Complete manual validation",
         "10. Confirm Pi-hole recovery is complete",
     ]
+    genmon_recovery_headings = [
+        "1. Verify GenMon recovery prerequisites",
+        "2. Restore the protected GenMon project",
+        "3. Verify recovery-critical files and persistent data",
+        "4. Verify the restored GenMon Git checkout",
+        "5. Rebuild the protected local GenMon image",
+        "6. Start GenMon from the restored project",
+        "7. Verify the GenMon runtime contract",
+        "8. Verify persistent mounts and GenMon HTTP",
+        "9. Refresh and verify Infrastructure evidence",
+        "10. Confirm recovery and separate future updates",
+    ]
     jellyfin_recovery_headings = [
         "1. Locate the Jellyfin Compose project",
         "2. Classify Jellyfin mounts",
@@ -292,17 +310,20 @@ def validate_documentation() -> None:
     require(len(entries) > 2 and entries[2].get("id") == docker_platform_id, "Docker Platform must be the third Recovery Center entry")
     require(len(entries) > 3 and entries[3].get("id") == nginx_proxy_manager_id, "Nginx Proxy Manager must be the fourth Recovery Center entry")
     require(len(entries) > 4 and entries[4].get("id") == pihole_recovery_id, "Pi-hole Recovery must be the fifth Recovery Center entry")
-    require(len(entries) > 5 and entries[5].get("id") == jellyfin_recovery_id, "Jellyfin Recovery must be the sixth Recovery Center entry")
-    require(len(entries) > 6 and entries[6].get("id") == home_assistant_recovery_id, "Home Assistant Recovery must be the seventh Recovery Center entry")
+    require(len(entries) > 5 and entries[5].get("id") == genmon_recovery_id, "GenMon Recovery must be the sixth Recovery Center source entry")
+    displayed_order = [host_recovery_id, restore_harbr_id, docker_platform_id, nginx_proxy_manager_id, pihole_recovery_id, genmon_recovery_id, home_assistant_recovery_id, jellyfin_recovery_id]
+    require(reference.get("display_order") == displayed_order, "Recovery Center display order is incorrect")
+    require(set(reference["display_order"]) <= ids, "Recovery Center display order references a missing guide")
     require(len(ids) == len(entries), "Recovery Center entry IDs must be unique")
     for entry in entries:
         require(entry.get("title") and entry.get("summary"), f"Incomplete guide metadata: {entry.get('id')}")
-        if entry.get("id") in {host_recovery_id, restore_harbr_id, docker_platform_id, nginx_proxy_manager_id, pihole_recovery_id, jellyfin_recovery_id, home_assistant_recovery_id}:
+        if entry.get("id") in {host_recovery_id, restore_harbr_id, docker_platform_id, nginx_proxy_manager_id, pihole_recovery_id, genmon_recovery_id, jellyfin_recovery_id, home_assistant_recovery_id}:
             is_host_recovery = entry.get("id") == host_recovery_id
             is_restore_harbr = entry.get("id") == restore_harbr_id
             is_docker_platform = entry.get("id") == docker_platform_id
             is_nginx_proxy_manager = entry.get("id") == nginx_proxy_manager_id
             is_pihole_recovery = entry.get("id") == pihole_recovery_id
+            is_genmon_recovery = entry.get("id") == genmon_recovery_id
             is_jellyfin_recovery = entry.get("id") == jellyfin_recovery_id
             if is_host_recovery:
                 expected_title = "Host Recovery"
@@ -319,6 +340,9 @@ def validate_documentation() -> None:
             elif is_pihole_recovery:
                 expected_title = "Pi-hole Recovery"
                 expected_headings = pihole_recovery_headings
+            elif is_genmon_recovery:
+                expected_title = "GenMon Recovery"
+                expected_headings = genmon_recovery_headings
             elif is_jellyfin_recovery:
                 expected_title = "Jellyfin Recovery"
                 expected_headings = jellyfin_recovery_headings
@@ -552,6 +576,31 @@ def validate_documentation() -> None:
                 require(commands.count("config --format json") == commands.count("config --format json | jq"), "Pi-hole resolved Compose data must be filtered rather than displayed")
                 for unsafe_output in ("printenv", "Config.Env", "cat .env", "cat /run/secrets", "docker compose config >", "docker compose config |"):
                     require(unsafe_output not in commands, f"Pi-hole Recovery must not display protected content: {unsafe_output}")
+            elif is_genmon_recovery:
+                require(entry.get("summary") == "Restore GenMon from its protected local source checkout and verify generator monitoring without performing an application update.", "GenMon Recovery has the wrong summary")
+                commands = "\n".join(section["paragraphs"][1] for section in sections)
+                all_text = "\n".join(paragraph for section in sections for paragraph in section["paragraphs"])
+                for marker in (
+                    "/srv/docker/genmon", "compose.yaml", "Dockerfile", "docker/genmon/", "srv-docker.tar.zst",
+                    "https://github.com/jgyates/genmon.git", "branch --show-current", "master", "GENMON_RECOVERED_HEAD",
+                    "docker compose -f compose.yaml build genmon", "ldf-genmon:latest", "/ldf-genmon",
+                    "8000/tcp", "/etc/genmon", "/var/log", "http://127.0.0.1:8000/",
+                    "systemctl start service-check.service", "harbr-infrastructure.service", "update_available",
+                    "service-update git-build", "fresh backup", "fast-forward", "status history",
+                ):
+                    require(marker in all_text, f"GenMon Recovery is missing: {marker}")
+                for forbidden in ("git clone", "git pull", "git fetch", "service-update --method", "docker pull ldf-genmon:latest", "cat /srv/docker/genmon/config", "docker logs"):
+                    require(forbidden not in commands, f"GenMon Recovery performs a forbidden recovery action: {forbidden}")
+                restore_step = "\n".join(sections_by_heading[genmon_recovery_headings[1]]["paragraphs"])
+                require("'^docker/genmon/'" in restore_step and "srv/docker/genmon/" not in restore_step, "GenMon archive paths must use docker/genmon")
+                require("test ! -e /srv/docker/genmon" in restore_step, "GenMon restore must not overwrite an existing project")
+                build_step = "\n".join(sections_by_heading[genmon_recovery_headings[4]]["paragraphs"])
+                require("not an update" in build_step and "missing base image" in build_step, "GenMon rebuild must distinguish recovery from base-image retrieval and updating")
+                infrastructure_step = "\n".join(sections_by_heading[genmon_recovery_headings[8]]["paragraphs"])
+                for marker in ("GENMON_PRIVATE_BEFORE", "GENMON_PUBLIC_BEFORE", "GENMON_PRIVATE_AFTER", "GENMON_PUBLIC_AFTER", "runtime_status == \"healthy\"", "current", "update_available"):
+                    require(marker in infrastructure_step, f"GenMon Infrastructure verification is missing: {marker}")
+                require("sudo /usr/local/sbin/service-check" not in infrastructure_step, "GenMon must preserve the service-check systemd publication chain")
+                require("printenv" not in commands and "Config.Env" not in commands and "cat .env" not in commands and "cat /run/secrets" not in commands, "GenMon verification must not expose protected data")
             elif is_jellyfin_recovery:
                 require(entry.get("summary") == "Restore Jellyfin application state and verify its separately maintained media library.", "Jellyfin Recovery has the wrong summary")
                 commands = "\n".join(section["paragraphs"][1] for section in sections)
