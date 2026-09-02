@@ -622,7 +622,15 @@ async function loadExperience() {
 
   const documentationResult = results[results.length - 1];
   if (documentationResult.status === 'fulfilled') {
-    appState.documentation = documentationResult.value.entries || [];
+    const recoveryOrder = documentationResult.value.display_order || [];
+    appState.documentation = [...(documentationResult.value.entries || [])].sort((left, right) => {
+      const leftPosition = recoveryOrder.indexOf(left.id);
+      const rightPosition = recoveryOrder.indexOf(right.id);
+      if (leftPosition === -1 && rightPosition === -1) return 0;
+      if (leftPosition === -1) return 1;
+      if (rightPosition === -1) return -1;
+      return leftPosition - rightPosition;
+    });
     appState.documentationUpdatedAt = documentationResult.value.updated_at || null;
   } else {
     console.warn(documentationResult.reason);

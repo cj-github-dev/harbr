@@ -143,6 +143,19 @@ jq -e '
   and (.sites[0].hosts[0].docker.projects[].services[] | select(.service_id == "pihole") |
     .container_name == "pihole" and .runtime_status == "healthy" and .health_status == "healthy")
 ' "$TEST_ROOT/infrastructure-generated.json" >/dev/null
+
+GENMON_INFRASTRUCTURE_FILTER='any(.sites[]; any(.hosts[]; .docker != null and any(.docker.projects[]; .project_id == "genmon" and .status == "healthy" and any(.services[]; .service_id == "genmon" and .runtime_status == "healthy" and .image == "ldf-genmon:latest" and (.update_status == "current" or .update_status == "update_available")))))'
+jq '.host.docker.projects += [{project_id:"genmon", name:"GenMon", status:"healthy", containers:[{service_id:"genmon", name:"ldf-genmon", status:"healthy", runtime_state:"running", health:"not-configured", image:{reference:"ldf-genmon:latest", update_status:"current"}, started_at:"2026-09-02T10:00:00-05:00"}]}]' \
+  "$TEST_ROOT/scripts/fixtures/service-check-v0.3.json" > "$TEST_ROOT/service-check-genmon.json"
+HARBR_ROOT="$TEST_ROOT" SERVICE_CHECK_SOURCE="$TEST_ROOT/service-check-genmon.json" \
+  "$TEST_ROOT/plugins/service-check/generate-infrastructure.sh" "$TEST_ROOT/infrastructure-genmon.json"
+jq -e "$GENMON_INFRASTRUCTURE_FILTER" "$TEST_ROOT/infrastructure-genmon.json" >/dev/null
+jq '(.host.docker.projects[] | select(.project_id == "genmon") | .containers[] | select(.service_id == "genmon") | .image.update_status) = "update_available"' \
+  "$TEST_ROOT/service-check-genmon.json" > "$TEST_ROOT/service-check-genmon-update.json"
+HARBR_ROOT="$TEST_ROOT" SERVICE_CHECK_SOURCE="$TEST_ROOT/service-check-genmon-update.json" \
+  "$TEST_ROOT/plugins/service-check/generate-infrastructure.sh" "$TEST_ROOT/infrastructure-genmon-update.json"
+jq -e "$GENMON_INFRASTRUCTURE_FILTER" "$TEST_ROOT/infrastructure-genmon-update.json" >/dev/null
+
 for forbidden in local_digest remote_digest image_id management_ip compose_directory compose_file secret registry_credentials runtime_state health started_at; do
   ! grep -q "\"$forbidden\"" "$TEST_ROOT/infrastructure-generated.json"
 done

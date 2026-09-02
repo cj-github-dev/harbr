@@ -249,7 +249,7 @@ production ring. If a future export introduces a value that production cannot
 yet use, preserve it in the JSON and document the reason here before updating
 the explicit generator mapping—never silently discard it or add a preset.
 
-First-party Reference Center guides live in
+First-party Recovery Center guides live in
 `ui/experience/data/reference.json`. The format is intentionally plain JSON:
 each entry has a stable ID, title, summary, and ordered sections containing
 headings and paragraphs. The UI also presents every resource published by the
@@ -269,7 +269,7 @@ The bootstrap inventory deliberately reports `not-generated` with unknown host
 facts rather than hard-coding a development or production host. A live refresh
 replaces it atomically with generated data. The inventory schema is
 `contracts/v1/inventory.schema.json`, and the resource is published through the
-versioned API index so the existing Reference Center presents formatted and raw
+versioned API index so the existing Recovery Center presents formatted and raw
 views without frontend-specific host values.
 
 The inventory never reads configuration contents, environment dumps, rclone
@@ -315,7 +315,7 @@ The standalone inventory command must run as the deployment user on Linux. On
 `dockerhost`, inspect `host`, `components`, `systemd_units`, and `identities` in
 the resulting JSON; confirm missing tools are explicit, no credential content is
 present, and the final Git status is empty. Then run the normal API refresh and
-open the Inventory resource in the Reference Center before marking the PR ready.
+open the Inventory resource in the Recovery Center before marking the PR ready.
 
 The repository validator checks JSON parsing, internal resources, startup
 sequence markup, archive interaction hooks, historical snapshots, the curated
@@ -355,7 +355,7 @@ Harbr is divided into four layers:
 - Confidence History
 - Backup Story
 - Protection Coverage
-- Reference Center
+- Recovery Center
 - Seasons
 
 ## Security
