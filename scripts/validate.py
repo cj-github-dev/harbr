@@ -147,7 +147,7 @@ def validate_pwa_foundation() -> None:
     html = HTML_PATH.read_text(encoding="utf-8")
     require('rel="manifest" href="/manifest.webmanifest"' in html, "HTML does not reference the Web App Manifest")
     apple_icon = "/assets/harbr-apple-touch-icon.png"
-    require(f'rel="apple-touch-icon" href="{apple_icon}"' in html, "HTML does not reference the Apple touch icon")
+    require(f'rel="apple-touch-icon" href="{apple_icon}?v=2"' in html, "HTML does not reference the versioned Apple touch icon")
     apple_icon_path = ROOT / "ui" / "experience" / apple_icon.lstrip("/")
     require(apple_icon_path.is_file(), "Missing Apple touch icon")
     require(png_dimensions(apple_icon_path) == (180, 180), "Apple touch icon must be 180x180")
