@@ -174,6 +174,67 @@ deployment user; it intentionally refuses root execution.
 The v4 experience retains Harbr's startup animation, Confidence Ring,
 seasonal landscape, glass surfaces, typography, and responsive navigation.
 
+### Infrastructure
+
+`/api/v1/infrastructure.json` is Harbr's read-only, multi-site operational
+view. Its hierarchy is `sites[] → hosts[] → optional capabilities`: Docker
+projects and services, platform services, filesystems, and virtualization with
+stable VM entities. Docker is optional, so the same v1 contract can represent
+the LDF Docker host, a Lake Forest Synology platform with containers and VMs,
+Linux VMs, hypervisors, and appliances without coupling the browser to a
+collector.
+
+The initial adapter is `plugins/service-check/generate-infrastructure.sh`.
+It reads the external collector's private record from
+`/var/lib/service-check/status.json` (override with
+`SERVICE_CHECK_SOURCE`), selects only public fields, validates the normalized
+document, and atomically publishes it through a private `state/.api-build`
+directory. It never runs health/package/registry/systemd checks, reads the
+Docker socket, or modifies the collector source. Digests, image IDs,
+management addresses, Compose paths, logs, credentials, secrets, and other
+unselected private fields cannot cross the allow-list transformation.
+
+The publisher must run as the normal Harbr deployment user, never root. That
+user needs read/search permission on the source file and its parent directory;
+provision this on the host with an existing appropriate group or ACL. Harbr
+does not assume or create a user/group and does not weaken file permissions.
+If the source is unreadable or transformation/validation fails, the adapter
+exits nonzero before its atomic rename and leaves the last valid public file
+intact.
+
+Infrastructure timestamps carry a 300-second freshness window. The Experience
+calculates freshness in the browser and polls only this resource every 60
+seconds with `cache: no-store`. Missing, failed, or stale data preserves useful
+last-known details but changes current confidence to the neutral/unknown
+presentation. Infrastructure never changes Restore Confidence.
+
+Statuses aggregate from workloads through hosts and sites using `healthy`,
+`warning`, `failure`, and `unknown`. Runtime health remains separate from image
+maintenance: a healthy service can report `update_available`, causing an
+attention-level project/host/site without presenting the service as failed.
+
+After service-check has written a record, publish and inspect it with:
+
+```bash
+cd /srv/docker/harbr
+chmod +x plugins/service-check/generate-infrastructure.sh
+SERVICE_CHECK_SOURCE=/var/lib/service-check/status.json \
+  HARBR_ROOT="$PWD" ./plugins/service-check/generate-infrastructure.sh
+jq empty api/v1/infrastructure.json
+jq '{generated_at,status,summary,sites}' api/v1/infrastructure.json
+```
+
+To verify source permissions without displaying private content, run:
+
+```bash
+sudo -u "$(stat -c '%U' /srv/docker/harbr)" test -r /var/lib/service-check/status.json
+```
+
+If that check fails, an administrator must grant the deployment identity
+read/search access using the host's established access-control policy before
+running the adapter. Do not make the API publisher root or expose the private
+record through Nginx.
+
 ### Confidence Ring configuration
 
 `ui/experience/config/confidence-ring.json` is the authoritative approved
@@ -195,7 +256,7 @@ production ring. If a future export introduces a value that production cannot
 yet use, preserve it in the JSON and document the reason here before updating
 the explicit generator mapping—never silently discard it or add a preset.
 
-First-party Reference Center guides live in
+First-party Recovery Center guides live in
 `ui/experience/data/reference.json`. The format is intentionally plain JSON:
 each entry has a stable ID, title, summary, and ordered sections containing
 headings and paragraphs. The UI also presents every resource published by the
@@ -215,7 +276,7 @@ The bootstrap inventory deliberately reports `not-generated` with unknown host
 facts rather than hard-coding a development or production host. A live refresh
 replaces it atomically with generated data. The inventory schema is
 `contracts/v1/inventory.schema.json`, and the resource is published through the
-versioned API index so the existing Reference Center presents formatted and raw
+versioned API index so the existing Recovery Center presents formatted and raw
 views without frontend-specific host values.
 
 The inventory never reads configuration contents, environment dumps, rclone
@@ -243,6 +304,7 @@ Run the dependency-free repository validation with:
 
 ```powershell
 python scripts/validate.py
+python scripts/validate-json-schema.py contracts/v1/infrastructure.schema.json api/bootstrap/v1/infrastructure.json
 node --check ui/experience/app.js
 ```
 
@@ -260,7 +322,7 @@ The standalone inventory command must run as the deployment user on Linux. On
 `dockerhost`, inspect `host`, `components`, `systemd_units`, and `identities` in
 the resulting JSON; confirm missing tools are explicit, no credential content is
 present, and the final Git status is empty. Then run the normal API refresh and
-open the Inventory resource in the Reference Center before marking the PR ready.
+open the Inventory resource in the Recovery Center before marking the PR ready.
 
 The repository validator checks JSON parsing, internal resources, startup
 sequence markup, archive interaction hooks, historical snapshots, the curated
@@ -300,7 +362,7 @@ Harbr is divided into four layers:
 - Confidence History
 - Backup Story
 - Protection Coverage
-- Reference Center
+- Recovery Center
 - Seasons
 
 ## Security

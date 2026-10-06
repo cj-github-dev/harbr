@@ -7,6 +7,8 @@ import json
 import hashlib
 import runpy
 import struct
+import subprocess
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -25,6 +27,9 @@ RCLONE_INSTALLER_PATH = ROOT / "scripts" / "install-rclone-remote.sh"
 HOST_PREFLIGHT_PATH = ROOT / "scripts" / "preflight-refresh-host.sh"
 PREREQUISITES_PATH = ROOT / "state" / "recovery" / "prerequisites.json"
 INVENTORY_GENERATOR_PATH = ROOT / "plugins" / "docker" / "generate-inventory.sh"
+INFRASTRUCTURE_GENERATOR_PATH = ROOT / "plugins" / "service-check" / "generate-infrastructure.sh"
+INFRASTRUCTURE_SCHEMA_PATH = ROOT / "contracts" / "v1" / "infrastructure.schema.json"
+SERVICE_CHECK_V03_FIXTURE_PATH = ROOT / "scripts" / "fixtures" / "service-check-v0.3.json"
 APPROVED_RING_HASHES = {
     RING_CONFIG_PATH: "c78248ebd91194730a5e6ae045970de64321508af8c871b0bc79314871e48d5e",
     RING_CSS_PATH: "73fab272f1ab3ce8c4c19208e1fc727a0af25ed23ad616b2f9058e8a79fd0399",
@@ -33,7 +38,9 @@ REQUIRED_GUIDES = {
     "docker-platform",
     "nginx-proxy-manager",
     "pihole-recovery",
+    "genmon-recovery",
     "jellyfin-recovery",
+    "home-assistant-recovery",
     "restore-harbr",
     "restore-guide",
     "verification-chain",
@@ -75,6 +82,7 @@ def validate_json() -> None:
         load_json(path)
     load_json(REFERENCE_PATH)
     load_json(PREREQUISITES_PATH)
+    load_json(SERVICE_CHECK_V03_FIXTURE_PATH)
 
 
 def validate_internal_resources() -> None:
@@ -86,6 +94,10 @@ def validate_internal_resources() -> None:
         require(path.is_file(), f"Missing internal resource: {url}")
 
     html = HTML_PATH.read_text(encoding="utf-8")
+    require("Reference Center" not in html, "The user-facing interface must use Recovery Center terminology")
+    require(html.count("Recovery Center") >= 4, "Recovery Center labels are incomplete")
+    app = APP_PATH.read_text(encoding="utf-8")
+    require("documentationResult.value.display_order" in app, "Recovery Center must render the reference-data display order")
     for resource in ("/config/confidence-ring.generated.css", "/styles.css", "/app.js", "/assets/harbr-mark.svg"):
         require(resource in html, f"Missing HTML resource link: {resource}")
         path = ROOT / "ui" / "experience" / resource.lstrip("/")
@@ -220,6 +232,8 @@ def validate_archives() -> None:
 
 def validate_documentation() -> None:
     reference = load_json(REFERENCE_PATH)
+    require(reference.get("version") == "1.6", "Recovery Center reference version must be 1.6")
+    require(reference.get("updated_at") == "2026-09-02T10:24:55-05:00", "Recovery Center updated_at must use the actual Chicago-local timestamp")
     entries = reference.get("entries", [])
     ids = {entry.get("id") for entry in entries}
     host_recovery_id = "host-recovery-prerequisites"
@@ -227,7 +241,9 @@ def validate_documentation() -> None:
     docker_platform_id = "docker-platform"
     nginx_proxy_manager_id = "nginx-proxy-manager"
     pihole_recovery_id = "pihole-recovery"
+    genmon_recovery_id = "genmon-recovery"
     jellyfin_recovery_id = "jellyfin-recovery"
+    home_assistant_recovery_id = "home-assistant-recovery"
     placeholder_paragraphs = [
         "This operational recovery procedure is being developed.",
         "Future versions of Harbr will replace this placeholder with an interactive recovery runbook designed to guide operators through recovery, verification, and confidence validation.",
@@ -241,31 +257,36 @@ def validate_documentation() -> None:
         "6. Verify that /srv/storage is writable",
         "7. Install or verify the required host software",
         "8. Install or verify Docker Engine and Docker Compose",
-        "9. Confirm that the host is ready to restore Harbr",
-        "10. Identify restoring Harbr as the next recovery step",
+        "9. Select, verify, and preserve a backup set",
+        "10. Restore host-level recovery configuration",
+        "11. Recreate the harbr-api identity boundary",
+        "12. Reload and verify restored host services",
+        "13. Verify collector, updater, inventory, state, and protected access",
+        "14. Hand off to Restore Harbr",
     ]
     restore_harbr_headings = [
-        "1. Locate the verified Harbr recovery source",
+        "1. Reconfirm the verified working backup set",
         "2. Restore the Harbr application",
-        "3. Restore the Harbr configuration",
+        "3. Verify restored host integration and initialize Harbr",
         "4. Start Harbr",
         "5. Verify the Recovery Center is available",
         "6. Verify recovery evidence",
-        "7. Verify operator access",
-        "8. Confirm Harbr is ready to guide recovery",
-        "9. Identify the next recovery step",
+        "7. Generate and publish fresh Infrastructure evidence",
+        "8. Verify operator access",
+        "9. Confirm Harbr is ready to guide recovery",
     ]
     docker_platform_headings = [
         "1. Verify Harbr remains operational",
-        "2. Review the protected Docker inventory",
-        "3. Restore the expected Docker directory structure",
-        "4. Restore shared Docker configuration",
+        "2. Reverify the selected two-artifact backup set",
+        "3. Restore the remaining /srv/docker tree without overwriting Harbr",
+        "4. Verify restored project and shared configuration",
         "5. Restore required Docker networks",
         "6. Verify Docker storage paths and permissions",
         "7. Verify Docker Compose projects can be evaluated",
         "8. Compare the protected inventory with the restored platform",
         "9. Confirm the Docker Platform is ready for application recovery",
         "10. Identify the next application recovery procedure",
+        "11. Activate normal scheduled operation after recovery",
     ]
     nginx_proxy_manager_headings = [
         "1. Verify prerequisites",
@@ -291,6 +312,18 @@ def validate_documentation() -> None:
         "9. Complete manual validation",
         "10. Confirm Pi-hole recovery is complete",
     ]
+    genmon_recovery_headings = [
+        "1. Verify GenMon recovery prerequisites",
+        "2. Restore the protected GenMon project",
+        "3. Verify recovery-critical files and persistent data",
+        "4. Verify the restored GenMon Git checkout",
+        "5. Rebuild the protected local GenMon image",
+        "6. Start GenMon from the restored project",
+        "7. Verify the GenMon runtime contract",
+        "8. Verify persistent mounts and GenMon HTTP",
+        "9. Refresh and verify Infrastructure evidence",
+        "10. Confirm recovery and separate future updates",
+    ]
     jellyfin_recovery_headings = [
         "1. Locate the Jellyfin Compose project",
         "2. Classify Jellyfin mounts",
@@ -302,6 +335,18 @@ def validate_documentation() -> None:
         "8. Verify Jellyfin recognizes restored application state",
         "9. Complete manual Jellyfin validation",
         "10. Confirm Jellyfin recovery is complete",
+    ]
+    home_assistant_recovery_headings = [
+        "1. Locate the Home Assistant Compose project",
+        "2. Classify Home Assistant mounts",
+        "3. Verify protected Home Assistant state",
+        "4. Verify required host dependencies",
+        "5. Verify Home Assistant networking",
+        "6. Start the Home Assistant stack",
+        "7. Verify container stability and Home Assistant availability",
+        "8. Verify restored Home Assistant application state",
+        "9. Complete manual Home Assistant validation",
+        "10. Confirm Home Assistant recovery is complete",
     ]
     step_field_prefixes = (
         "Required operator action:",
@@ -316,16 +361,21 @@ def validate_documentation() -> None:
     require(len(entries) > 2 and entries[2].get("id") == docker_platform_id, "Docker Platform must be the third Recovery Center entry")
     require(len(entries) > 3 and entries[3].get("id") == nginx_proxy_manager_id, "Nginx Proxy Manager must be the fourth Recovery Center entry")
     require(len(entries) > 4 and entries[4].get("id") == pihole_recovery_id, "Pi-hole Recovery must be the fifth Recovery Center entry")
-    require(len(entries) > 5 and entries[5].get("id") == jellyfin_recovery_id, "Jellyfin Recovery must be the sixth Recovery Center entry")
+    require(len(entries) > 5 and entries[5].get("id") == genmon_recovery_id, "GenMon Recovery must be the sixth Recovery Center source entry")
+    displayed_order = [host_recovery_id, restore_harbr_id, docker_platform_id, nginx_proxy_manager_id, pihole_recovery_id, genmon_recovery_id, home_assistant_recovery_id, jellyfin_recovery_id]
+    require(reference.get("display_order") == displayed_order, "Recovery Center display order is incorrect")
+    require(set(reference["display_order"]) <= ids, "Recovery Center display order references a missing guide")
     require(len(ids) == len(entries), "Recovery Center entry IDs must be unique")
     for entry in entries:
         require(entry.get("title") and entry.get("summary"), f"Incomplete guide metadata: {entry.get('id')}")
-        if entry.get("id") in {host_recovery_id, restore_harbr_id, docker_platform_id, nginx_proxy_manager_id, pihole_recovery_id, jellyfin_recovery_id}:
+        if entry.get("id") in {host_recovery_id, restore_harbr_id, docker_platform_id, nginx_proxy_manager_id, pihole_recovery_id, genmon_recovery_id, jellyfin_recovery_id, home_assistant_recovery_id}:
             is_host_recovery = entry.get("id") == host_recovery_id
             is_restore_harbr = entry.get("id") == restore_harbr_id
             is_docker_platform = entry.get("id") == docker_platform_id
             is_nginx_proxy_manager = entry.get("id") == nginx_proxy_manager_id
             is_pihole_recovery = entry.get("id") == pihole_recovery_id
+            is_genmon_recovery = entry.get("id") == genmon_recovery_id
+            is_jellyfin_recovery = entry.get("id") == jellyfin_recovery_id
             if is_host_recovery:
                 expected_title = "Host Recovery"
                 expected_headings = host_recovery_headings
@@ -341,9 +391,15 @@ def validate_documentation() -> None:
             elif is_pihole_recovery:
                 expected_title = "Pi-hole Recovery"
                 expected_headings = pihole_recovery_headings
-            else:
+            elif is_genmon_recovery:
+                expected_title = "GenMon Recovery"
+                expected_headings = genmon_recovery_headings
+            elif is_jellyfin_recovery:
                 expected_title = "Jellyfin Recovery"
                 expected_headings = jellyfin_recovery_headings
+            else:
+                expected_title = "Home Assistant Recovery"
+                expected_headings = home_assistant_recovery_headings
             require(entry.get("title") == expected_title, f"{expected_title} has the wrong user-facing title")
             sections = entry.get("sections", [])
             require([section.get("heading") for section in sections] == expected_headings, f"{expected_title} steps are missing or out of order")
@@ -362,10 +418,27 @@ def validate_documentation() -> None:
                 require(ssh_step.index("'id -un'") < ssh_step.index("'hostnamectl --static'"), "Host Recovery must authenticate over SSH before verifying the hostname")
                 docker_step = "\n".join(sections_by_heading[host_recovery_headings[7]]["paragraphs"])
                 require("sudo -u chris docker info" in docker_step, "Host Recovery must prove Docker daemon access as chris")
-                readiness_step = "\n".join(sections_by_heading[host_recovery_headings[8]]["paragraphs"])
-                require("Automatic checks alone do not authorize restoration" in readiness_step, "Host Recovery must distinguish automatic checks from restore authorization")
-                for material in ("verified backup archive", "trusted Harbr source", "protected configuration", "secure credentials"):
-                    require(material in readiness_step, f"Host Recovery manual readiness confirmation is missing: {material}")
+                backup_step = "\n".join(sections_by_heading[host_recovery_headings[8]]["paragraphs"])
+                for material in ("SHA256SUMS", "srv-docker.tar.zst", "disaster-recovery-config.tar.zst", "working copy"):
+                    require(material in backup_step, f"Host Recovery backup-set verification is missing: {material}")
+                host_config_step = "\n".join(sections_by_heading[host_recovery_headings[9]]["paragraphs"])
+                for marker in ("--numeric-owner", "--acls", "--xattrs", "/root/.config/rclone/rclone.conf"):
+                    require(marker in host_config_step, f"Host Recovery disaster-recovery extraction is missing: {marker}")
+                identity_step = "\n".join(sections_by_heading[host_recovery_headings[10]]["paragraphs"])
+                identity_command = sections_by_heading[host_recovery_headings[10]]["paragraphs"][1]
+                for marker in ("stat --format='%g' /var/lib/service-check/status.json", "getent group \"$ARCHIVED_HARBR_GID\"", "groupadd --gid", "usermod --append --groups harbr-api chris", "sudo -u chris -g harbr-api test -r"):
+                    require(marker in identity_step, f"Host Recovery harbr-api reconstruction is missing: {marker}")
+                for forbidden in ("groupadd harbr-api", "chmod", "chgrp"):
+                    require(forbidden not in identity_command, f"Host Recovery harbr-api reconstruction uses an unsafe shortcut: {forbidden}")
+                require("test -z \"$GID_OWNER\" || test \"$GID_OWNER\" = harbr-api" in identity_step, "Host Recovery must block incompatible archived-GID collisions")
+                services_step = "\n".join(sections_by_heading[host_recovery_headings[11]]["paragraphs"])
+                for unit in ("docker-backup.timer", "service-check.timer", "harbr-infrastructure.service", "harbr-api-refresh.service"):
+                    require(unit in services_step, f"Host Recovery service verification is missing: {unit}")
+                require("do not start service-check" in services_step.lower(), "Host Recovery must defer service-check until Harbr exists")
+                require("enable --now" not in services_step and "systemctl start service-check.timer" not in services_step and "systemctl start docker-backup.timer" not in services_step, "Host Recovery must enable timers without activating them during partial recovery")
+                updater_step = "\n".join(sections_by_heading[host_recovery_headings[12]]["paragraphs"])
+                require("service-update --help" in updater_step and "service-update v0.4.0" in updater_step, "Host Recovery must verify service-update with its supported help command")
+                require("service-update --version" not in updater_step, "Host Recovery must not invoke unsupported service-update --version")
             elif is_restore_harbr:
                 require(entry.get("summary") == "Restore Harbr and verify that the recovery console is operational.", "Restore Harbr has the wrong summary")
                 application_step = "\n".join(sections_by_heading[restore_harbr_headings[1]]["paragraphs"])
@@ -374,15 +447,22 @@ def validate_documentation() -> None:
                 require('entries[0].id == "host-recovery-prerequisites"' in center_step, "Restore Harbr must verify Host Recovery availability")
                 evidence_step = "\n".join(sections_by_heading[restore_harbr_headings[5]]["paragraphs"])
                 require("do not infer or calculate confidence" in evidence_step, "Restore Harbr must preserve explicit evidence states")
-                guidance_step = "\n".join(sections_by_heading[restore_harbr_headings[7]]["paragraphs"])
-                for marker in ("harbr-experience", "Recovery Center", "api/v1/index.json", "MANAGEMENT_IP", "Harbr is ready to guide recovery"):
+                infrastructure_step = "\n".join(sections_by_heading[restore_harbr_headings[6]]["paragraphs"])
+                for marker in ("systemctl start service-check.service", "PRIVATE_BEFORE", "PUBLIC_BEFORE", "PRIVATE_AFTER", "PUBLIC_AFTER", "/var/lib/service-check/status.json", "harbr-infrastructure.service", "api/v1/infrastructure.json", "stale_after_seconds == 32400", "warning"):
+                    require(marker in infrastructure_step, f"Restore Harbr fresh Infrastructure verification is missing: {marker}")
+                require("sudo /usr/local/sbin/service-check" not in infrastructure_step, "Restore Harbr must run service-check through systemd OnSuccess")
+                guidance_step = "\n".join(sections_by_heading[restore_harbr_headings[8]]["paragraphs"])
+                for marker in ("harbr-experience", "Recovery Center", "api/v1/index.json", "infrastructure.json"):
                     require(marker in guidance_step, f"Restore Harbr guidance-readiness check is missing: {marker}")
                 next_step = "\n".join(sections_by_heading[restore_harbr_headings[8]]["paragraphs"])
                 require("Next Recovery Step" in next_step and "Restore the Docker Platform." in next_step, "Restore Harbr must identify the next recovery step")
             elif is_docker_platform:
                 require(entry.get("summary") == "Restore and verify the shared Docker environment required before application recovery can begin.", "Docker Platform has the wrong summary")
                 inventory_step = "\n".join(sections_by_heading[docker_platform_headings[1]]["paragraphs"])
-                require("Do not substitute docker ps" in inventory_step, "Docker Platform must treat protected evidence as authoritative")
+                for artifact in ("disaster-recovery-config.tar.zst", "srv-docker.tar.zst", "SHA256SUMS"):
+                    require(artifact in inventory_step, f"Docker Platform backup-set verification is missing: {artifact}")
+                restore_step = "\n".join(sections_by_heading[docker_platform_headings[2]]["paragraphs"])
+                require("--exclude='srv/docker/harbr'" in restore_step and "--acls" in restore_step and "--xattrs" in restore_step, "Docker Platform must preserve live Harbr and archived filesystem metadata")
                 commands = "\n".join(section["paragraphs"][1] for section in sections)
                 for forbidden_command in ("docker compose up", "docker compose start", "docker start", "docker restart"):
                     require(forbidden_command not in commands, f"Docker Platform must not start application stacks: {forbidden_command}")
@@ -392,6 +472,19 @@ def validate_documentation() -> None:
                 next_step = "\n".join(sections_by_heading[docker_platform_headings[9]]["paragraphs"])
                 require("no authoritative application recovery order" in next_step.lower(), "Docker Platform must not fabricate an application recovery order")
                 require("Manual operator selection required" in next_step, "Docker Platform must require manual selection without authoritative order metadata")
+                require("return to Docker Platform step 11" in next_step, "Docker Platform must defer timer activation until application recovery completes")
+                timer_step = "\n".join(sections_by_heading[docker_platform_headings[10]]["paragraphs"])
+                for marker in (
+                    "systemctl start service-check.timer",
+                    "systemctl start docker-backup.timer",
+                    "systemctl is-active --quiet service-check.timer",
+                    "systemctl is-active --quiet docker-backup.timer",
+                    "systemctl is-enabled --quiet service-check.timer",
+                    "systemctl is-enabled --quiet docker-backup.timer",
+                    "systemctl list-timers --all service-check.timer docker-backup.timer",
+                ):
+                    require(marker in timer_step, f"Docker Platform completed-recovery timer activation is missing: {marker}")
+                require("only after /srv/docker is fully restored" in timer_step and "every required application-specific recovery procedure" in timer_step, "Docker Platform must block timer activation during partial recovery")
             elif is_nginx_proxy_manager:
                 require(entry.get("summary") == "Restore Nginx Proxy Manager and verify that reverse proxy services are operational.", "Nginx Proxy Manager has the wrong summary")
                 prerequisite_step = "\n".join(sections_by_heading[nginx_proxy_manager_headings[0]]["paragraphs"])
@@ -534,7 +627,37 @@ def validate_documentation() -> None:
                 require(commands.count("config --format json") == commands.count("config --format json | jq"), "Pi-hole resolved Compose data must be filtered rather than displayed")
                 for unsafe_output in ("printenv", "Config.Env", "cat .env", "cat /run/secrets", "docker compose config >", "docker compose config |"):
                     require(unsafe_output not in commands, f"Pi-hole Recovery must not display protected content: {unsafe_output}")
-            else:
+            elif is_genmon_recovery:
+                require(entry.get("summary") == "Restore GenMon from its protected local source checkout and verify generator monitoring without performing an application update.", "GenMon Recovery has the wrong summary")
+                commands = "\n".join(section["paragraphs"][1] for section in sections)
+                all_text = "\n".join(paragraph for section in sections for paragraph in section["paragraphs"])
+                for marker in (
+                    "/srv/docker/genmon", "compose.yaml", "Dockerfile", "docker/genmon/", "srv-docker.tar.zst",
+                    "https://github.com/jgyates/genmon.git", "branch --show-current", "master", "GENMON_RECOVERED_HEAD",
+                    "docker compose -f compose.yaml build genmon", "ldf-genmon:latest", "/ldf-genmon",
+                    "8000/tcp", "/etc/genmon", "/var/log", "http://127.0.0.1:8000/",
+                    "systemctl start service-check.service", "harbr-infrastructure.service", "update_available",
+                    "service-update git-build", "fresh backup", "fast-forward", "status history",
+                ):
+                    require(marker in all_text, f"GenMon Recovery is missing: {marker}")
+                for forbidden in ("git clone", "git pull", "git fetch", "service-update --method", "docker pull ldf-genmon:latest", "cat /srv/docker/genmon/config", "docker logs"):
+                    require(forbidden not in commands, f"GenMon Recovery performs a forbidden recovery action: {forbidden}")
+                restore_step = "\n".join(sections_by_heading[genmon_recovery_headings[1]]["paragraphs"])
+                require("'^docker/genmon/'" in restore_step and "srv/docker/genmon/" not in restore_step, "GenMon archive paths must use docker/genmon")
+                require("test ! -e /srv/docker/genmon" in restore_step, "GenMon restore must not overwrite an existing project")
+                build_step = "\n".join(sections_by_heading[genmon_recovery_headings[4]]["paragraphs"])
+                require("not an update" in build_step and "missing base image" in build_step, "GenMon rebuild must distinguish recovery from base-image retrieval and updating")
+                infrastructure_step = "\n".join(sections_by_heading[genmon_recovery_headings[8]]["paragraphs"])
+                for marker in ("GENMON_PRIVATE_BEFORE", "GENMON_PUBLIC_BEFORE", "GENMON_PRIVATE_AFTER", "GENMON_PUBLIC_AFTER", "GENMON_INFRASTRUCTURE_FILTER", "runtime_status == \"healthy\"", "current", "update_available"):
+                    require(marker in infrastructure_step, f"GenMon Infrastructure verification is missing: {marker}")
+                genmon_filter = 'any(.sites[]; any(.hosts[]; .docker != null and any(.docker.projects[]; .project_id == "genmon" and .status == "healthy" and any(.services[]; .service_id == "genmon" and .runtime_status == "healthy" and .image == "ldf-genmon:latest" and (.update_status == "current" or .update_status == "update_available")))))'
+                require(genmon_filter in infrastructure_step, "GenMon recovery must use the validated Infrastructure v1 predicate")
+                refresh_validator = (ROOT / "scripts" / "validate-api-refresh.sh").read_text(encoding="utf-8")
+                require(genmon_filter in refresh_validator, "Infrastructure refresh validation must execute the GenMon recovery predicate")
+                require("service-check-genmon-update.json" in refresh_validator, "GenMon Infrastructure validation must exercise update_available")
+                require("sudo /usr/local/sbin/service-check" not in infrastructure_step, "GenMon must preserve the service-check systemd publication chain")
+                require("printenv" not in commands and "Config.Env" not in commands and "cat .env" not in commands and "cat /run/secrets" not in commands, "GenMon verification must not expose protected data")
+            elif is_jellyfin_recovery:
                 require(entry.get("summary") == "Restore Jellyfin application state and verify its separately maintained media library.", "Jellyfin Recovery has the wrong summary")
                 commands = "\n".join(section["paragraphs"][1] for section in sections)
                 require("read -r -p" not in commands, "Jellyfin Recovery must discover values rather than request free-form input")
@@ -584,6 +707,57 @@ def validate_documentation() -> None:
                 require(commands.count("config --format json") == commands.count("config --format json | jq"), "Jellyfin resolved Compose data must be filtered")
                 for unsafe_output in ("printenv", "Config.Env", "cat .env", "cat /run/secrets"):
                     require(unsafe_output not in commands, f"Jellyfin Recovery must not display protected content: {unsafe_output}")
+            else:
+                require(entry.get("summary") == "Restore Home Assistant's protected application state and verify that the restored instance is operational.", "Home Assistant Recovery has the wrong summary")
+                commands = "\n".join(section["paragraphs"][1] for section in sections)
+                require("read -r -p" not in commands, "Home Assistant Recovery must discover values rather than request free-form input")
+                locate_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[0]]["paragraphs"])
+                for marker in ("same shell", "HOMEASSISTANT_COMPOSE_CANDIDATES", "HOMEASSISTANT_SERVICE_CANDIDATES", "select HOMEASSISTANT_SELECTION", "HOMEASSISTANT_MOUNT_REPORT", "HOMEASSISTANT_PORT_REPORT", "Keep this shell open through step 10"):
+                    require(marker in locate_step, f"Home Assistant Compose discovery is missing: {marker}")
+                classification_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[1]]["paragraphs"])
+                for marker in ("protected-state", "rebuildable", "runtime-support", "HOMEASSISTANT_CLASSIFIED_MOUNTS", "select classification in protected-state rebuildable runtime-support", "no mount remains unresolved"):
+                    require(marker in classification_step, f"Home Assistant mount classification is missing: {marker}")
+                state_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[2]]["paragraphs"])
+                for marker in ("homeassistant_state_present()", "homeassistant_runtime_present()", "HOMEASSISTANT_MISSING_STATE", "HOMEASSISTANT_MISSING_RUNTIME", ".Mountpoint", "-mindepth 1 -maxdepth 3 -print -quit", "Missing or empty protected Home Assistant state"):
+                    require(marker in state_step, f"Home Assistant protected-state verification is missing: {marker}")
+                require("Do not create directories or volumes, initialize clean state" in state_step, "Home Assistant Recovery must block clean-state initialization")
+                dependency_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[3]]["paragraphs"])
+                for marker in ("HOMEASSISTANT_HOST_REPORT", ".devices", ".privileged", ".cap_add", "HOMEASSISTANT_MISSING_DEVICES"):
+                    require(marker in dependency_step, f"Home Assistant host-dependency verification is missing: {marker}")
+                network_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[4]]["paragraphs"])
+                for marker in ("HOMEASSISTANT_NETWORK_MODE", "host)", "none)", "service:*|container:*)", "bridge)", "'')", "docker network inspect"):
+                    require(marker in network_step, f"Home Assistant network-mode handling is missing: {marker}")
+                require('networks // {"default": null}' not in network_step and "Do not fabricate a default network" in network_step, "Home Assistant Recovery must not fabricate default networks")
+                for marker in (". as $config", "$config.services[$service].networks", "$config.networks[$key].name", '$config.name + "_" + $key', '$config.name + "_default"'):
+                    require(marker in network_step, f"Home Assistant explicit-network resolution does not retain root Compose context: {marker}")
+                start_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[5]]["paragraphs"])
+                require(commands.count(" up -d") == 1 and 'docker compose -f "$HOMEASSISTANT_COMPOSE_FILE" up -d' in start_step, "Home Assistant Recovery must contain exactly one scoped startup")
+                for marker in ("HOMEASSISTANT_START_BLOCKERS", "homeassistant_state_present", "homeassistant_runtime_present", "HOMEASSISTANT_HOST_REPORT", "HOMEASSISTANT_NETWORK_REPORT", "HOMEASSISTANT_START_NETWORK_MODE", '.network_mode // ""', 'test "$HOMEASSISTANT_START_NETWORK_MODE" != "$HOMEASSISTANT_NETWORK_MODE"', "network-mode-changed", "HOMEASSISTANT_CONTAINER_ID", 'ps -q "$HOMEASSISTANT_SERVICE"'):
+                    require(marker in start_step, f"Home Assistant pre-start recheck is missing: {marker}")
+                require(start_step.index("homeassistant_state_present") < start_step.index(" up -d"), "Home Assistant protected state must be rechecked before startup")
+                require(start_step.index("HOMEASSISTANT_START_NETWORK_MODE") < start_step.index(" up -d") and start_step.index("network-mode-changed") < start_step.index(" up -d"), "Home Assistant network mode must be re-derived and compared before startup")
+                availability_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[6]]["paragraphs"])
+                for marker in ("RestartCount", ".State.Health", "HOMEASSISTANT_NETWORK_MODE", "8123/tcp", "NetworkSettings.Networks", "manifest.json", "api/discovery_info", '.name == "Home Assistant"', ".version", '= 200'):
+                    require(marker in availability_step, f"Home Assistant stability or endpoint verification is missing: {marker}")
+                require("arbitrary 2xx pages" in availability_step and "authentication responses" in availability_step, "Home Assistant endpoint verification must reject arbitrary HTTP success")
+                restored_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[7]]["paragraphs"])
+                for marker in ("api/onboarding", "all(.[]; .done == true)", ".Mounts", "version", "first-run onboarding", "initialization", "HOMEASSISTANT_INIT_LOG", "mktemp", "chmod 600", 'docker compose -f "$HOMEASSISTANT_COMPOSE_FILE" logs', "--since 15m", "--tail 200", "configuration", "recorder", "sqlite", "database", "migration", "fatal", "! grep -Eiq"):
+                    require(marker in restored_step, f"Home Assistant restored-state verification is missing: {marker}")
+                require('> "$HOMEASSISTANT_INIT_LOG" 2>&1' in restored_step, "Home Assistant scoped logs must be captured without printing")
+                require('cat "$HOMEASSISTANT_INIT_LOG"' not in restored_step and 'printf "$HOMEASSISTANT_INIT_LOG"' not in restored_step, "Home Assistant initialization logs must not be printed")
+                require("HOMEASSISTANT_PERSISTENT_INIT_FAILURES" not in restored_step and "-lt 3" not in restored_step, "Home Assistant initialization failures must not use an occurrence-count tolerance")
+                require("any narrowly matched initialization failure is present" in restored_step and "Ordinary warnings, unavailable integrations, and recoverable external-dependency errors do not block" in restored_step, "Home Assistant narrow initialization matches must block without treating ordinary dependency warnings as fatal")
+                manual_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[8]]["paragraphs"])
+                for marker in ("dashboards", "users", "integrations", "automations", "scripts", "scenes", "devices", "entities", "notifications", "Nginx Proxy Manager", "representative automation"):
+                    require(marker in manual_step, f"Home Assistant manual validation is missing: {marker}")
+                completion_step = "\n".join(sections_by_heading[home_assistant_recovery_headings[9]]["paragraphs"])
+                for marker in ("Home Assistant application state has been restored", "Configuration has been successfully recognized", "Representative automation has been manually validated", "Home Assistant recovery is complete", "homeassistant_state_present", "homeassistant_runtime_present", "api/onboarding", ".HostConfig.Devices", ".HostConfig.Privileged", ".HostConfig.CapAdd"):
+                    require(marker in completion_step, f"Home Assistant completion is missing: {marker}")
+                require("docker volume create" not in commands and "docker network create" not in commands and "mkdir" not in commands, "Home Assistant verification must not create missing recovery data")
+                require("container name" not in commands and "HOMEASSISTANT_CONTAINER_NAME" not in commands, "Home Assistant Recovery must not use generated container names")
+                require(commands.count("config --format json") == commands.count("config --format json | jq"), "Home Assistant resolved Compose data must be filtered")
+                for unsafe_output in ("printenv", "Config.Env", "cat .env", "cat /run/secrets", "secrets.yaml", "docker logs"):
+                    require(unsafe_output not in commands, f"Home Assistant Recovery must not display protected content: {unsafe_output}")
             continue
         require(entry.get("summary") == placeholder_paragraphs[0], f"Guide summary is not the Recovery Center placeholder: {entry.get('id')}")
         require(
@@ -647,6 +821,40 @@ def validate_inventory() -> None:
     require("rclone.conf" not in generator or "SOURCE_CONFIG" not in generator, "Inventory generator must not inspect rclone credential contents")
 
 
+def validate_infrastructure() -> None:
+    data = load_json(API_SOURCE_ROOT / "infrastructure.json")
+    require(data.get("api_version") == "v1", "Infrastructure fixture is not versioned")
+    require(data.get("status") == "unknown" and data.get("sites") == [], "Bootstrap Infrastructure must not fabricate healthy state")
+    require(data.get("stale_after_seconds") == 300, "Infrastructure freshness contract changed unexpectedly")
+    index = load_json(API_SOURCE_ROOT / "index.json")
+    require(index["resources"].get("infrastructure") == "/api/v1/infrastructure.json", "Infrastructure is not registered")
+    schema_text = INFRASTRUCTURE_SCHEMA_PATH.read_text(encoding="utf-8")
+    for forbidden in ("local_digest", "remote_digest", "image_id", "management_ip", "compose_file", "compose_directory"):
+        require(forbidden not in schema_text, f"Private field present in Infrastructure schema: {forbidden}")
+    generator = INFRASTRUCTURE_GENERATOR_PATH.read_text(encoding="utf-8")
+    for marker in ("SERVICE_CHECK_SOURCE", "/var/lib/service-check/status.json", "state/.api-build", "mktemp -d", "jq -e", "mv -f", "EUID == 0", "elif .site and .host", ".host.status", "failed_systemd_units", ".image.reference?", ".image.update_status?", "def docker_health", ".container_name // .name", ".health // \"unknown\""):
+        require(marker in generator, f"Infrastructure adapter missing {marker}")
+    require("docker.sock" not in generator and "systemctl" not in generator and "apt " not in generator, "Infrastructure adapter performs collection")
+    fixture = load_json(SERVICE_CHECK_V03_FIXTURE_PATH)
+    require("sites" not in fixture and {"site", "host"} <= fixture.keys(), "service-check fixture must use the v0.3 single-host shape")
+    require(fixture.get("collector") == {"name": "service-check", "version": "0.3.0"}, "service-check fixture has the wrong collector identity")
+    require(fixture["site"].get("id") == "LDF" and fixture["host"].get("id") == "ldf-dockerhost", "service-check fixture has the wrong stable identities")
+    require(fixture["host"].get("failed_systemd_units") == [], "service-check fixture must exercise the systemd array shape")
+    require(all("containers" in project and "services" not in project for project in fixture["host"]["docker"]["projects"]), "service-check fixture must use the v0.3 containers key")
+    fixture_services = [service for project in fixture["host"]["docker"]["projects"] for service in project["containers"]]
+    require(len(fixture_services) == 7 and all(service["status"] == "healthy" for service in fixture_services), "service-check fixture must contain seven healthy runtime services")
+    require(all(service.get("runtime_state") == "running" and "health" in service and "started_at" in service for service in fixture_services), "service-check fixture lacks real container runtime fields")
+    database = next(service for service in fixture_services if service["service_id"] == "db")
+    require(database["image"]["reference"] == "mariadb:10.11" and database["image"]["update_status"] == "update_available", "service-check fixture does not exercise the nested MariaDB image update")
+    app = APP_PATH.read_text(encoding="utf-8")
+    for marker in ("renderInfrastructure", "pollInfrastructure", "60000", "visibilitychange", "infrastructure.json"):
+        require(marker in app, f"Infrastructure browser integration missing {marker}")
+    subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "validate-json-schema.py"), str(INFRASTRUCTURE_SCHEMA_PATH), str(API_SOURCE_ROOT / "infrastructure.json")],
+        check=True, capture_output=True, text=True,
+    )
+
+
 def validate_refresh_deployment() -> None:
     unit = REFRESH_UNIT_PATH.read_text(encoding="utf-8")
     drop_in = BACKUP_DROP_IN_PATH.read_text(encoding="utf-8")
@@ -666,7 +874,8 @@ def validate_refresh_deployment() -> None:
     require("EUID == 0" in refresh, "API refresh must refuse root execution")
     require('source_file in "$BACKUP_STATUS" "$BACKUP_HISTORY"' in refresh, "API refresh lacks source permission checks")
     require('"$INVENTORY_GENERATOR" "$TMP_DIR/inventory.json"' in refresh, "API refresh does not generate inventory")
-    require("site confidence story history coverage system inventory index" in refresh, "Inventory is not atomically published")
+    require("site confidence story history coverage system inventory infrastructure index" in refresh, "API resources are not atomically published")
+    require('infrastructure: "/api/v1/infrastructure.json"' in refresh, "Infrastructure is not registered by runtime refresh")
     for marker in (
         'DEST_CONFIG="${DEST_CONFIG:-/var/lib/harbr/rclone/rclone.conf}"',
         'REMOTE_NAME="${REMOTE_NAME:-OneDrive}"',
@@ -690,6 +899,7 @@ def main() -> None:
     validate_documentation()
     validate_recovery_prerequisites()
     validate_inventory()
+    validate_infrastructure()
     validate_refresh_deployment()
     print("Harbr validation passed")
 

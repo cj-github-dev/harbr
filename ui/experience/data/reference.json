@@ -1,6 +1,16 @@
 {
-  "version": "1.3",
-  "updated_at": "2026-08-05T00:00:00-05:00",
+  "version": "1.6",
+  "updated_at": "2026-09-02T10:24:55-05:00",
+  "display_order": [
+    "host-recovery-prerequisites",
+    "restore-harbr",
+    "docker-platform",
+    "nginx-proxy-manager",
+    "pihole-recovery",
+    "genmon-recovery",
+    "home-assistant-recovery",
+    "jellyfin-recovery"
+  ],
   "entries": [
     {
       "id": "host-recovery-prerequisites",
@@ -88,23 +98,63 @@
           ]
         },
         {
-          "heading": "9. Confirm that the host is ready to restore Harbr",
+          "heading": "9. Select, verify, and preserve a backup set",
           "paragraphs": [
-            "Required operator action: First run the automatic host checks. Then manually confirm and record that a specific verified backup archive and its checksum or manifest are available, the trusted Harbr source is available, and the separately protected configuration and secure credentials required for restoration have been recovered. Automatic checks alone do not authorize restoration.",
-            "Verification command: test \"$(hostnamectl --static)\" = dockerhost && sudo -u chris test -w /srv/storage && test -d /srv/storage/backups/docker && find /srv/storage/backups/docker -mindepth 1 -maxdepth 1 -type d -print -quit | grep -q . && systemctl is-active --quiet docker.service && docker compose version && sudo -u chris docker info --format '{{.ServerVersion}}' && printf '%s\\n' 'Automatic checks passed; manual recovery-material confirmation still required'",
-            "Expected successful result: The command exits with status 0, prints the Docker Compose and daemon versions, and explicitly states that automatic checks passed while manual recovery-material confirmation remains required. The host is ready to restore Harbr only after the operator also completes every manual confirmation in this step.",
-            "If verification fails: Run each automatic check separately and return to the corresponding failed step. If automatic checks pass but a selected verified archive, its integrity evidence, trusted source, protected configuration, or secure credentials cannot be confirmed manually, stop and recover that material; do not substitute current container state or an unverified archive.",
-            "Blocks recovery: Yes. Any failed automatic check or incomplete manual recovery-material confirmation means the host is not ready to restore Harbr."
+            "Required operator action: Select one completed backup-set directory under /srv/storage/backups/docker that contains SHA256SUMS, srv-docker.tar.zst, and disaster-recovery-config.tar.zst. Verify the recorded checksums and both archives before restoration. Preserve that selected set unchanged by creating a separate working copy under /srv/storage/recovery-work; never extract over the only backup copy.",
+            "Verification command: read -r -p 'Selected backup-set directory: ' BACKUP_SET && test -f \"$BACKUP_SET/SHA256SUMS\" && test -f \"$BACKUP_SET/srv-docker.tar.zst\" && test -f \"$BACKUP_SET/disaster-recovery-config.tar.zst\" && (cd \"$BACKUP_SET\" && sha256sum --check SHA256SUMS) && tar --zstd --list --file \"$BACKUP_SET/srv-docker.tar.zst\" >/dev/null && tar --zstd --list --file \"$BACKUP_SET/disaster-recovery-config.tar.zst\" >/dev/null && sudo install -d -o chris -g chris -m 0700 /srv/storage/recovery-work && WORKING_SET=/srv/storage/recovery-work/$(basename \"$BACKUP_SET\") && test ! -e \"$WORKING_SET\" && sudo -u chris cp -a \"$BACKUP_SET\" \"$WORKING_SET\" && printf 'Verified working backup set: %s\\n' \"$WORKING_SET\"",
+            "Expected successful result: Every SHA256SUMS entry reports OK, both archives are readable, the original selected backup set is unchanged, and a distinct working backup-set path is printed.",
+            "If verification fails: Stop. Check the selected set, storage health, read permissions, checksum manifest, available working space, and archive transfer. Recover another verified copy if integrity fails; do not repair, overwrite, or extract from the failed source set.",
+            "Blocks recovery: Yes. Host or application files must not be restored until one complete backup set passes checksums and archive-readability verification and has a separate working copy."
           ]
         },
         {
-          "heading": "10. Identify restoring Harbr as the next recovery step",
+          "heading": "10. Restore host-level recovery configuration",
           "paragraphs": [
-            "Required operator action: Proceed only after step 9's automatic checks and manual recovery-material confirmations are complete. Keep the selected verified archive unchanged and identify restoring Harbr from a copy as the next recovery step.",
-            "Verification command: test -d /srv/storage/backups/docker && printf '%s\\n' 'Next recovery step: restore Harbr'",
-            "Expected successful result: The command prints Next recovery step: restore Harbr.",
-            "If verification fails: Recheck the /srv/storage mount and protected backup root, then locate the trusted Harbr source, verified archive, protected configuration, and secure credentials required by the documented restore path.",
-            "Blocks recovery: Yes. Harbr restoration cannot begin until its trusted source and protected recovery material are available."
+            "Required operator action: From the verified working copy, restore disaster-recovery-config.tar.zst into the blank host with numeric ownership, modes, ACLs, and extended attributes preserved. This archive is the authority for host-level backup, service-check, service-update, Harbr publication, and protected rclone configuration; do not display protected file contents.",
+            "Verification command: read -r -p 'Verified working backup-set path: ' WORKING_SET && test -r \"$WORKING_SET/disaster-recovery-config.tar.zst\" && sudo tar --zstd --extract --file \"$WORKING_SET/disaster-recovery-config.tar.zst\" --directory=/ --numeric-owner --acls --xattrs --same-permissions && sudo test -r /etc/docker-backup.conf && sudo test -r /root/.config/rclone/rclone.conf && sudo stat --format='%U:%G %a %n' /root/.config/rclone/rclone.conf",
+            "Expected successful result: Extraction completes without error, the host-level configuration is restored with archived ownership and metadata, and stat reports the protected rclone file without printing its contents.",
+            "If verification fails: Stop and inspect the working copy, archive readability, destination filesystem support for ACLs/xattrs, available space, tar diagnostics, and protected-file modes. Do not weaken credential permissions or extract from the preserved source set.",
+            "Blocks recovery: Yes. Current host services and protected configuration must be restored from the verified disaster-recovery archive before Harbr restoration."
+          ]
+        },
+        {
+          "heading": "11. Recreate the harbr-api identity boundary",
+          "paragraphs": [
+            "Required operator action: The archive restores numeric ownership but not /etc/group. Derive the authoritative archived GID from /var/lib/service-check/status.json, block any collision with a differently named group, create harbr-api with that GID when absent, and add chris to it before evaluating units that declare SupplementaryGroups=harbr-api. Do not change private status ownership or permissions.",
+            "Verification command: ARCHIVED_HARBR_GID=$(stat --format='%g' /var/lib/service-check/status.json) && case \"$ARCHIVED_HARBR_GID\" in ''|*[!0-9]*) exit 1;; esac && GID_OWNER=$(getent group \"$ARCHIVED_HARBR_GID\" | cut -d: -f1 || true) && { test -z \"$GID_OWNER\" || test \"$GID_OWNER\" = harbr-api; } && if ! getent group harbr-api >/dev/null; then sudo groupadd --gid \"$ARCHIVED_HARBR_GID\" harbr-api; fi && test \"$(getent group harbr-api | cut -d: -f3)\" = \"$ARCHIVED_HARBR_GID\" && sudo usermod --append --groups harbr-api chris && getent group harbr-api && id -nG chris | tr ' ' '\\n' | grep -qx harbr-api && test \"$(stat --format='%g' /var/lib/service-check/status.json)\" = \"$ARCHIVED_HARBR_GID\" && sudo -u chris -g harbr-api test -r /var/lib/service-check/status.json",
+            "Expected successful result: No incompatible GID collision exists, harbr-api resolves with exactly the archived numeric GID, chris is a member, restored private ownership remains unchanged, and chris with the harbr-api group can read the intended status file without broader permissions.",
+            "If verification fails: Stop before loading or starting publication units. Inspect the archived numeric GID, existing group database, chris identity, restored ownership, ACLs, and file modes. Resolve any GID collision explicitly; never silently reuse an unrelated group, choose a different GID, chgrp the restored state, or weaken private permissions.",
+            "Blocks recovery: Yes. The named harbr-api identity must faithfully represent archived numeric ownership before any unit referencing SupplementaryGroups=harbr-api is considered recovered."
+          ]
+        },
+        {
+          "heading": "12. Reload and verify restored host services",
+          "paragraphs": [
+            "Required operator action: After harbr-api has been reconstructed, reload systemd so restored unit files become active configuration. Verify docker-backup.service/timer, service-check.service/timer, harbr-infrastructure.service, and harbr-api-refresh.service. Enable the two timers for their documented schedules, but do not start service-check yet: a successful check invokes harbr-infrastructure.service, which requires /srv/docker/harbr to exist.",
+            "Verification command: getent group harbr-api >/dev/null && sudo systemctl daemon-reload && sudo systemctl enable docker-backup.timer service-check.timer && systemctl cat docker-backup.service docker-backup.timer service-check.service service-check.timer harbr-infrastructure.service harbr-api-refresh.service >/dev/null && systemctl is-enabled --quiet docker-backup.timer && systemctl is-enabled --quiet service-check.timer && systemctl show service-check.timer --property=OnCalendar --value",
+            "Expected successful result: harbr-api exists first, daemon-reload and unit verification succeed, both timers are enabled, and service-check.timer reports its restored 00:00, 08:00, and 16:00 local schedule. service-check has not been manually started during this step.",
+            "If verification fails: Check the restored identity, files under /etc/systemd/system, drop-in directories, ownership and modes, daemon-reload diagnostics, timer definitions, and unit dependency paths. Keep service-check stopped until Harbr is restored.",
+            "Blocks recovery: Yes. The identity and restored host service definitions must be recognized and the timers correctly configured before handoff to Restore Harbr."
+          ]
+        },
+        {
+          "heading": "13. Verify collector, updater, inventory, state, and protected access",
+          "paragraphs": [
+            "Required operator action: Verify the restored service-check inventory and executables, service-update 0.4.0 availability, private state directories, and non-root Harbr publisher access. service-update status.json and history.jsonl may legitimately be absent when no 0.4 operation has occurred. Treat any restored status/history as recovery context, not proof of present health, and never print rclone or private status contents.",
+            "Verification command: sudo jq empty /etc/service-check/inventory.json && sudo test -x /usr/local/sbin/service-check && sudo test -x /usr/local/sbin/service-update && sudo /usr/local/sbin/service-update --help 2>&1 | grep -q 'service-update v0.4.0' && sudo test -d /var/lib/service-check && sudo test -d /var/lib/service-update && sudo sh -c 'test ! -e /var/lib/service-update/status.json || jq empty /var/lib/service-update/status.json' && sudo sh -c 'test ! -e /var/lib/service-update/history.jsonl || jq -e . /var/lib/service-update/history.jsonl >/dev/null' && sudo -u chris -g harbr-api test -r /var/lib/service-check/status.json && sudo test -r /root/.config/rclone/rclone.conf",
+            "Expected successful result: Inventory JSON is valid, both executables are available, service-update reports 0.4.0, state directories exist, optional updater records are either absent or parseable, the Harbr publisher can read private service-check status, and protected rclone configuration is readable only through its intended privileged path.",
+            "If verification fails: Check archived ownership, ACLs, xattrs, executable modes, the harbr-api group and supplementary access, inventory validity, and whether optional service-update records simply have not been created. Do not fabricate status/history files or expose protected contents.",
+            "Blocks recovery: Yes for inventory, executables, required directories, and publisher access. Absence of optional service-update status/history alone does not block recovery."
+          ]
+        },
+        {
+          "heading": "14. Hand off to Restore Harbr",
+          "paragraphs": [
+            "Required operator action: Confirm the verified working backup set remains available, host-level configuration is restored, systemd has been reloaded, required units and access are verified, and service-check has not been started against a missing Harbr checkout. Proceed next to Restore Harbr using srv-docker.tar.zst from the working copy.",
+            "Verification command: read -r -p 'Verified working backup-set path: ' WORKING_SET && test -r \"$WORKING_SET/srv-docker.tar.zst\" && test -r \"$WORKING_SET/disaster-recovery-config.tar.zst\" && systemctl is-enabled --quiet service-check.timer && test ! -d /srv/docker/harbr && printf '%s\\n' 'Next recovery step: Restore Harbr from srv-docker.tar.zst'",
+            "Expected successful result: Both working archives remain readable, restored timer configuration is enabled without a premature collector run, and the command identifies Restore Harbr as the next step.",
+            "If verification fails: Return to backup-set verification or the corresponding host configuration, service, access, or destination check. If /srv/docker/harbr already exists, determine whether it is an intentional verified restore before proceeding; do not overwrite it blindly.",
+            "Blocks recovery: Yes. Restore Harbr must begin from the verified working archive with host-level prerequisites in place and no ambiguous existing checkout."
           ]
         }
       ]
@@ -115,32 +165,32 @@
       "summary": "Restore Harbr and verify that the recovery console is operational.",
       "sections": [
         {
-          "heading": "1. Locate the verified Harbr recovery source",
+          "heading": "1. Reconfirm the verified working backup set",
           "paragraphs": [
-            "Required operator action: Identify the verified backup or trusted source that will restore Harbr. Confirm its provenance and, when integrity evidence is provided, verify the recorded checksum or manifest before using it.",
-            "Verification command: read -r -p 'Verified Harbr source path: ' HARBR_SOURCE && test -r \"$HARBR_SOURCE\" && stat --format='%n %s bytes' \"$HARBR_SOURCE\"",
-            "Expected successful result: The command reports the recorded source path and size. The operator has also confirmed that the source is trusted and that its available integrity evidence passes.",
-            "If verification fails: Check the /srv/storage mount, source path, read permissions, protected backup catalog, recorded checksum or manifest, and trusted repository access. Do not use an unverified source.",
-            "Blocks recovery: Yes. Harbr must be restored from a readable source whose provenance and available integrity evidence are confirmed."
+            "Required operator action: Continue with the same verified working backup set created during Host Recovery. Recheck SHA256SUMS and srv-docker.tar.zst readability before extracting Harbr; keep the preserved source backup and the working archive unchanged.",
+            "Verification command: read -r -p 'Verified working backup-set path: ' WORKING_SET && test -f \"$WORKING_SET/SHA256SUMS\" && test -f \"$WORKING_SET/srv-docker.tar.zst\" && (cd \"$WORKING_SET\" && sha256sum --check SHA256SUMS) && tar --zstd --list --file \"$WORKING_SET/srv-docker.tar.zst\" | grep -q '^srv/docker/harbr/'",
+            "Expected successful result: Every checksum reports OK and the archive contains the Harbr tree under srv/docker/harbr without modifying either backup copy.",
+            "If verification fails: Stop and return to Host Recovery backup-set selection. Do not use an unreadable archive, bypass checksum failure, or restore over the preserved source.",
+            "Blocks recovery: Yes. Harbr must be restored from the verified srv-docker archive in the selected working backup set."
           ]
         },
         {
           "heading": "2. Restore the Harbr application",
           "paragraphs": [
-            "Required operator action: Restore only the Harbr source into /srv/docker/harbr as chris:chris. Preserve the selected recovery source unchanged and do not restore or start unrelated applications.",
-            "Verification command: cd /srv/docker/harbr && test -f compose.yml && test -d ui/experience && test -x scripts/init-api.sh && test \"$(docker compose config --services)\" = harbr-experience",
-            "Expected successful result: The command exits with status 0 and the Compose definition contains only the harbr-experience service.",
-            "If verification fails: Check the restore destination, ownership and modes, completeness of the Harbr source, executable script permissions, and whether unrelated Compose services were restored into this checkout.",
+            "Required operator action: Extract only srv/docker/harbr from the working srv-docker.tar.zst into a private staging directory, preserving numeric ownership, modes, ACLs, and xattrs, then place that verified tree at /srv/docker/harbr. Do not extract or start unrelated projects at this stage.",
+            "Verification command: read -r -p 'Verified working backup-set path: ' WORKING_SET && HARBR_STAGE=$(mktemp -d /srv/storage/recovery-work/harbr-stage.XXXXXX) && sudo tar --zstd --extract --file \"$WORKING_SET/srv-docker.tar.zst\" --directory=\"$HARBR_STAGE\" --numeric-owner --acls --xattrs --same-permissions 'srv/docker/harbr' && sudo test ! -e /srv/docker/harbr && sudo install -d /srv/docker && sudo mv \"$HARBR_STAGE/srv/docker/harbr\" /srv/docker/harbr && cd /srv/docker/harbr && test -f compose.yml && test -d ui/experience && test -x scripts/init-api.sh && test \"$(docker compose config --services)\" = harbr-experience",
+            "Expected successful result: Only Harbr is restored from the archive, archived filesystem metadata is retained, and its Compose definition contains only harbr-experience.",
+            "If verification fails: Preserve the working archive, remove only the incomplete staging directory after inspection, and check archive paths, destination conflicts, ownership/ACL/xattr support, executable modes, and Compose validity. Never overwrite an existing /srv/docker/harbr without first proving its origin and preserving it.",
             "Blocks recovery: Yes. The expected Harbr application structure must be complete and isolated before configuration or startup."
           ]
         },
         {
-          "heading": "3. Restore the Harbr configuration",
+          "heading": "3. Verify restored host integration and initialize Harbr",
           "paragraphs": [
-            "Required operator action: Restore the protected Harbr configuration and scoped credentials, recreate the documented chris and harbr-api access, then initialize the live API from source-controlled bootstrap data as chris.",
-            "Verification command: cd /srv/docker/harbr && test -r state/sites/LDF.json && sudo -u chris -g harbr-api test -r /etc/harbr/backup-api.conf && sudo -u chris -g chris test -r /var/lib/harbr/rclone/rclone.conf && sudo -u chris -g chris env HARBR_ROOT=/srv/docker/harbr ./scripts/init-api.sh && find api/v1 -maxdepth 1 -type f -name '*.json' -exec jq empty {} +",
-            "Expected successful result: The site and protected configuration are readable by the intended identities, API initialization succeeds, and every initialized live API document parses as JSON.",
-            "If verification fails: Check the LDF site configuration, protected configuration recovery, rclone credential installation, chris and harbr-api identities, group ACLs, ownership of api/v1 and state/.api-build, required commands, and bootstrap JSON.",
+            "Required operator action: Recognize that Host Recovery restored the Harbr-related systemd units and protected host configuration from disaster-recovery-config.tar.zst. Verify the chris and harbr-api access boundary, the restored unit definitions, site configuration, and private service-check read access; then initialize the live API from source-controlled bootstrap data as chris.",
+            "Verification command: cd /srv/docker/harbr && test -r state/sites/LDF.json && getent group harbr-api >/dev/null && id -nG chris | tr ' ' '\\n' | grep -qx harbr-api && sudo -u chris -g harbr-api test -r /var/lib/service-check/status.json && systemctl cat harbr-infrastructure.service harbr-api-refresh.service >/dev/null && sudo -u chris -g chris env HARBR_ROOT=/srv/docker/harbr ./scripts/init-api.sh && find api/v1 -maxdepth 1 -type f -name '*.json' -exec jq empty {} +",
+            "Expected successful result: Stable site data and restored units are present, the non-root publisher has intended group/read access, API initialization succeeds, and every initialized live API document parses as JSON.",
+            "If verification fails: Check disaster-recovery extraction, chris and harbr-api membership, source-file ACLs, restored unit paths, ownership of api/v1 and state/.api-build, required commands, and bootstrap JSON. Do not broaden private status or credential permissions.",
             "Blocks recovery: Yes. Harbr cannot operate as the recovery console without readable site configuration and valid API data."
           ]
         },
@@ -175,33 +225,33 @@
           ]
         },
         {
-          "heading": "7. Verify operator access",
+          "heading": "7. Generate and publish fresh Infrastructure evidence",
           "paragraphs": [
-            "Required operator action: From the operator workstation, use the recorded management IP to open http://<recorded-management-ip>:8088 and confirm the Harbr interface is usable. The command below verifies the same access path without relying on local hostname resolution.",
+            "Required operator action: Disregard service-check status restored from disaster-recovery-config.tar.zst as historical recovery context. Now that Harbr exists and is running, capture both private and public generation timestamps, start service-check.service through systemd so its OnSuccess=harbr-infrastructure.service chain executes, and prove that both records were regenerated by this operation. A warning such as reboot required is acceptable; freshness and successful publication are required.",
+            "Verification command: PRIVATE_BEFORE=$(jq -r '.generated_at // empty' /var/lib/service-check/status.json 2>/dev/null || true) && PUBLIC_BEFORE=$(jq -r '.generated_at // empty' /srv/docker/harbr/api/v1/infrastructure.json 2>/dev/null || true) && PRIVATE_MTIME_BEFORE=$(stat --format='%y' /var/lib/service-check/status.json 2>/dev/null || true) && PUBLIC_MTIME_BEFORE=$(stat --format='%y' /srv/docker/harbr/api/v1/infrastructure.json 2>/dev/null || true) && sudo systemctl start service-check.service && test \"$(systemctl show service-check.service --property=Result --value)\" = success && for ATTEMPT in $(seq 1 30); do PUBLIC_AFTER=$(jq -r '.generated_at // empty' /srv/docker/harbr/api/v1/infrastructure.json 2>/dev/null || true); test -n \"$PUBLIC_AFTER\" && test \"$PUBLIC_AFTER\" != \"$PUBLIC_BEFORE\" && break; sleep 1; done && test \"$(systemctl show harbr-infrastructure.service --property=Result --value)\" = success && jq empty /var/lib/service-check/status.json && jq empty /srv/docker/harbr/api/v1/infrastructure.json && PRIVATE_AFTER=$(jq -r '.generated_at // empty' /var/lib/service-check/status.json) && PUBLIC_AFTER=$(jq -r '.generated_at // empty' /srv/docker/harbr/api/v1/infrastructure.json) && test -n \"$PRIVATE_AFTER\" && test -n \"$PUBLIC_AFTER\" && test \"$PRIVATE_AFTER\" != \"$PRIVATE_BEFORE\" && test \"$PUBLIC_AFTER\" != \"$PUBLIC_BEFORE\" && test \"$(stat --format='%y' /var/lib/service-check/status.json)\" != \"$PRIVATE_MTIME_BEFORE\" && test \"$(stat --format='%y' /srv/docker/harbr/api/v1/infrastructure.json)\" != \"$PUBLIC_MTIME_BEFORE\" && systemctl is-enabled --quiet service-check.timer && jq -e '.api_version == \"v1\" and .generated_at != null and .stale_after_seconds == 32400 and (.status == \"healthy\" or .status == \"warning\" or .status == \"failure\" or .status == \"unknown\")' /srv/docker/harbr/api/v1/infrastructure.json && curl --fail --silent http://localhost:8088/api/v1/infrastructure.json | jq -e --arg generated \"$PUBLIC_AFTER\" '.api_version == \"v1\" and .generated_at == $generated and .stale_after_seconds == 32400'",
+            "Expected successful result: The systemd-started collector and its OnSuccess publisher both report success, private and public generation timestamps and file mtimes differ from the captured values, both documents are valid JSON, the public resource has the 32400-second freshness window, and the locally served API exposes that exact new public generation. The aggregate may legitimately be healthy, warning, failure, or unknown.",
+            "If verification fails: Check service-check diagnostics, inventory validity, private status ownership and ACLs, the harbr-api supplementary group, harbr-infrastructure.service status, adapter execution, state/.api-build and api/v1 permissions, generated timestamps, and local Nginx access. Do not treat restored status or service-update history as fresh health evidence.",
+            "Blocks recovery: Yes. Infrastructure health need not be green, but fresh collector evidence must traverse the complete publication chain and be visible through Harbr."
+          ]
+        },
+        {
+          "heading": "8. Verify operator access",
+          "paragraphs": [
+            "Required operator action: From the operator workstation, use the management address recorded in protected network documentation to open Harbr and confirm the Recovery Center and Infrastructure section are usable. Do not write that private address into Harbr documentation or API data.",
             "Verification command: read -r -p 'Recorded management IP: ' MANAGEMENT_IP && curl --fail --silent --show-error \"http://$MANAGEMENT_IP:8088/\" | grep -q '<title>Harbr</title>'",
-            "Expected successful result: The command exits with status 0 and the operator can load the Harbr interface through the recorded management IP.",
-            "If verification fails: Check the recorded management IP, workstation route, firewall, port 8088 exposure, Compose port mapping, container state, and whether local access from step 5 still succeeds.",
-            "Blocks recovery: Yes. The operator must be able to reach and use the recovery console through the expected management path."
+            "Expected successful result: The command exits with status 0 and the operator can use Harbr through the recorded management path without that address being published by Harbr.",
+            "If verification fails: Check protected network records, workstation routing, firewall, port 8088 exposure, Compose port mapping, container state, and whether local access from steps 5 through 7 still succeeds.",
+            "Blocks recovery: Yes. The operator must be able to reach the recovery console before broader platform recovery."
           ]
         },
         {
-          "heading": "8. Confirm Harbr is ready to guide recovery",
+          "heading": "9. Confirm Harbr is ready to guide recovery",
           "paragraphs": [
-            "Required operator action: Confirm Harbr is running, the Recovery Center is available, every required recovery-evidence resource in the current API index is readable, and the operator can access the interface through the recorded management IP. Complete this step only when Harbr is ready to guide the next recovery stage.",
-            "Verification command: cd /srv/docker/harbr && docker compose ps --status running --services | grep -qx harbr-experience && curl --fail --silent http://localhost:8088/ | grep -q 'id=\"reference\"' && for resource in $(jq -r '.resources[]' api/v1/index.json); do curl --fail --silent \"http://localhost:8088$resource\" | jq empty || exit 1; done && read -r -p 'Recorded management IP: ' MANAGEMENT_IP && curl --fail --silent --show-error \"http://$MANAGEMENT_IP:8088/\" | grep -q '<title>Harbr</title>' && printf '%s\\n' 'Harbr is ready to guide recovery'",
-            "Expected successful result: The harbr-experience container is running, the Recovery Center is served, every indexed recovery-evidence resource is reachable and valid JSON, operator access through the recorded management IP succeeds, and the command prints Harbr is ready to guide recovery.",
-            "If verification fails: Return to the corresponding startup, Recovery Center, recovery-evidence, or operator-access step. Do not transition to Harbr-guided recovery until the running service, Recovery Center, required readable evidence, and operator access all succeed.",
-            "Blocks recovery: Yes. Harbr is ready to guide the next recovery stage only when every check in this step succeeds."
-          ]
-        },
-        {
-          "heading": "9. Identify the next recovery step",
-          "paragraphs": [
-            "Required operator action: Record the transition into Harbr-guided recovery and identify restoring the Docker Platform as the next recovery procedure.",
-            "Verification command: printf '%s\\n' 'Next Recovery Step' 'Restore the Docker Platform.'",
-            "Expected successful result: The command prints Next Recovery Step followed by Restore the Docker Platform.",
-            "If verification fails: Confirm step 8 completed and communicate the next recovery action explicitly before any unrelated application restoration begins.",
-            "Blocks recovery: No. Harbr is already operational, but Docker Platform restoration must remain the next controlled recovery action."
+            "Required operator action: Confirm Harbr is running, the Recovery Center is available, every indexed API resource parses, fresh Infrastructure evidence is visible, and operator access succeeds. Then identify Docker Platform as the next controlled procedure; do not start unrelated applications yet.",
+            "Verification command: cd /srv/docker/harbr && docker compose ps --status running --services | grep -qx harbr-experience && curl --fail --silent http://localhost:8088/ | grep -q 'id=\"reference\"' && for resource in $(jq -r '.resources[]' api/v1/index.json); do curl --fail --silent \"http://localhost:8088$resource\" | jq empty || exit 1; done && curl --fail --silent http://localhost:8088/api/v1/infrastructure.json | jq -e '.generated_at != null' && printf '%s\\n' 'Next Recovery Step' 'Restore the Docker Platform.'",
+            "Expected successful result: Harbr and its Recovery Center remain available, every indexed resource is valid JSON, freshly generated Infrastructure data is served, and Docker Platform is named as the next step.",
+            "If verification fails: Return to the corresponding startup, Recovery Center, API, fresh service-check publication, or operator-access step. Do not proceed to broader application recovery with stale or unpublished Infrastructure evidence.",
+            "Blocks recovery: Yes. Docker Platform recovery begins only after Harbr is a usable recovery console with fresh Infrastructure publication."
           ]
         }
       ]
@@ -222,33 +272,33 @@
           ]
         },
         {
-          "heading": "2. Review the protected Docker inventory",
+          "heading": "2. Reverify the selected two-artifact backup set",
           "paragraphs": [
-            "Required operator action: Locate the protected recovery evidence that records expected application stacks, containers, images, networks, and persistent-storage locations. Confirm its provenance and integrity, and use it as the authority rather than currently running Docker state.",
-            "Verification command: read -r -p 'Protected Docker inventory path: ' DOCKER_INVENTORY && test -r \"$DOCKER_INVENTORY\" && stat --format='%n %s bytes' \"$DOCKER_INVENTORY\"",
-            "Expected successful result: The command reports a readable protected inventory path and size, and the operator confirms the evidence records the expected Docker projects, containers, images, networks, and storage locations.",
-            "If verification fails: Check the protected recovery catalog, /srv/storage mount, source path, permissions, and recorded checksum or manifest. Do not substitute docker ps, docker images, or other current runtime output for protected inventory evidence.",
-            "Blocks recovery: Yes. The expected Docker platform cannot be restored safely without authoritative protected inventory evidence."
+            "Required operator action: Use the same verified working backup set selected during Host Recovery. Keep the artifact roles explicit: disaster-recovery-config.tar.zst supplied host-level operational configuration, while srv-docker.tar.zst supplies Compose projects, application configuration, the Harbr repository, and bind-mounted persistent application data. Recheck the complete set before broader extraction.",
+            "Verification command: read -r -p 'Verified working backup-set path: ' WORKING_SET && test -f \"$WORKING_SET/SHA256SUMS\" && test -f \"$WORKING_SET/disaster-recovery-config.tar.zst\" && test -f \"$WORKING_SET/srv-docker.tar.zst\" && (cd \"$WORKING_SET\" && sha256sum --check SHA256SUMS) && tar --zstd --list --file \"$WORKING_SET/srv-docker.tar.zst\" >/dev/null",
+            "Expected successful result: Every checksum reports OK, both named artifacts remain present in the working copy, and the /srv/docker archive is readable without changing the preserved source or working archive.",
+            "If verification fails: Stop and return to Host Recovery backup-set selection. Do not substitute current Docker state, a partial archive, or files copied from the running Harbr checkout for verified recovery evidence.",
+            "Blocks recovery: Yes. Broader Docker restoration requires the same complete, verified two-artifact backup set used for host and Harbr recovery."
           ]
         },
         {
-          "heading": "3. Restore the expected Docker directory structure",
+          "heading": "3. Restore the remaining /srv/docker tree without overwriting Harbr",
           "paragraphs": [
-            "Required operator action: Restore or recreate the protected project directories under /srv/docker without starting application stacks. Apply the ownership and permissions recorded for the deployment account and each service.",
-            "Verification command: find /srv/docker -mindepth 1 -maxdepth 1 -type d -printf '%u:%g %m %p\\n' | sort",
-            "Expected successful result: The command lists every required project directory with ownership and modes matching the protected inventory; no unrelated application stack has been started.",
-            "If verification fails: Compare the listing with protected evidence, restore missing directories, correct ownership and modes, and confirm the intended storage is mounted before continuing.",
-            "Blocks recovery: Yes. Missing or incorrectly permissioned project directories prevent reliable configuration and Compose validation."
+            "Required operator action: Harbr is already live from the early selective restore. Extract the remaining srv/docker content from the working archive to / while explicitly excluding srv/docker/harbr, preserving numeric ownership, modes, ACLs, and xattrs. Do not start any restored Compose project, and do not overwrite or replace the live recovery console.",
+            "Verification command: read -r -p 'Verified working backup-set path: ' WORKING_SET && HARBR_REVISION=$(git -C /srv/docker/harbr rev-parse HEAD) && sudo tar --zstd --extract --file \"$WORKING_SET/srv-docker.tar.zst\" --directory=/ --numeric-owner --acls --xattrs --same-permissions --exclude='srv/docker/harbr' --exclude='srv/docker/harbr/*' 'srv/docker' && test \"$(git -C /srv/docker/harbr rev-parse HEAD)\" = \"$HARBR_REVISION\" && cd /srv/docker/harbr && docker compose ps --status running --services | grep -qx harbr-experience && find /srv/docker -mindepth 1 -maxdepth 1 -type d -printf '%u:%g %m %p\\n' | sort",
+            "Expected successful result: Remaining project and bind-mounted data directories are restored with archived filesystem metadata, the live Harbr revision is unchanged and harbr-experience remains running, and no unrelated stack is started.",
+            "If verification fails: Stop before application startup. Preserve the archives, inspect tar diagnostics and destination metadata, return to Restore Harbr if its revision or service changed, and correct only incomplete non-Harbr extraction from verified evidence. Never rerun an extraction that can overwrite the live Harbr checkout.",
+            "Blocks recovery: Yes. The complete /srv/docker platform must be restored without disrupting Harbr or starting applications blindly."
           ]
         },
         {
-          "heading": "4. Restore shared Docker configuration",
+          "heading": "4. Verify restored project and shared configuration",
           "paragraphs": [
-            "Required operator action: Restore the protected shared environment files, network definitions, common configuration, daemon configuration, registry access configuration, and service prerequisites required by multiple stacks. Keep secrets in their protected files and never copy secret values into Harbr.",
-            "Verification command: sudo test ! -e /etc/docker/daemon.json -o -r /etc/docker/daemon.json && find /srv/docker -mindepth 2 -maxdepth 3 -type f \\( -name '.env' -o -name 'compose.yml' -o -name 'compose.yaml' -o -name 'docker-compose.yml' -o -name 'docker-compose.yaml' \\) -printf '%u:%g %m %p\\n' | sort",
-            "Expected successful result: Any restored daemon configuration is readable, and the command lists the expected shared and project configuration paths with protected ownership and modes without displaying their contents.",
-            "If verification fails: Compare paths, ownership, and modes with protected recovery material; restore missing configuration through the secure process and validate daemon configuration before restarting Docker. Do not print environment, registry credential, or secret-file contents.",
-            "Blocks recovery: Yes. Required shared configuration and protected credentials must be present and readable by their intended identities."
+            "Required operator action: Verify Compose definitions, environment-file paths, shared configuration, and bind-mounted application data restored from srv-docker.tar.zst without displaying protected contents. Keep host-level backup, collector, publisher, updater, systemd, and rclone configuration associated with the separately restored disaster-recovery-config.tar.zst.",
+            "Verification command: find /srv/docker -mindepth 2 -maxdepth 3 -type f \\( -name '.env' -o -name 'compose.yml' -o -name 'compose.yaml' -o -name 'docker-compose.yml' -o -name 'docker-compose.yaml' \\) -printf '%u:%g %m %p\\n' | sort && sudo test -r /etc/docker-backup.conf && sudo test -r /etc/service-check/inventory.json && sudo test -r /root/.config/rclone/rclone.conf",
+            "Expected successful result: Expected project configuration paths are listed with restored ownership and modes without content disclosure, and the separately restored host-level backup, service-check, and protected rclone files remain readable through intended privileged access.",
+            "If verification fails: Determine whether the missing item belongs to srv-docker.tar.zst or disaster-recovery-config.tar.zst, then return to the corresponding verified extraction step. Do not print environment files, private collector state, registry credentials, rclone configuration, or secret-file contents.",
+            "Blocks recovery: Yes. Artifact ownership must remain clear and every required project/shared configuration path must be present before Compose evaluation or application startup."
           ]
         },
         {
@@ -304,11 +354,21 @@
         {
           "heading": "10. Identify the next application recovery procedure",
           "paragraphs": [
-            "Required operator action: Review repository-defined recovery metadata and protected recovery evidence for an authoritative application order. No authoritative application recovery order currently exists in the repository, so record that manual operator selection is required and do not fabricate the first application stack.",
-            "Verification command: printf '%s\\n' 'Next Application Recovery Procedure' 'Manual operator selection required: no authoritative application recovery order is defined.'",
-            "Expected successful result: The command states that manual operator selection is required and does not name an application stack that lacks authoritative ordering evidence.",
-            "If verification fails: Recheck protected recovery material for a newly available authoritative order. If none exists, stop before application restoration and obtain an explicit operator decision based on protected evidence.",
-            "Blocks recovery: Yes. Individual application recovery must wait until an operator selects and records the next stack from authoritative protected evidence."
+            "Required operator action: Review repository-defined recovery metadata and protected recovery evidence for an authoritative application order. No authoritative application recovery order currently exists in the repository, so record that manual operator selection is required and do not fabricate the first application stack. Complete every required application-specific recovery procedure, then return to Docker Platform step 11; do not start normal timers while any required application or /srv/docker restoration remains incomplete.",
+            "Verification command: printf '%s\\n' 'Next Application Recovery Procedure' 'Manual operator selection required: no authoritative application recovery order is defined.' 'After all required application recovery is complete, return to Docker Platform step 11.'",
+            "Expected successful result: The command states that manual operator selection is required, does not name an application stack that lacks authoritative ordering evidence, and directs the operator to return for timer activation only after required application recovery is complete.",
+            "If verification fails: Recheck protected recovery material for a newly available authoritative order. If none exists, stop before application restoration and obtain an explicit operator decision based on protected evidence. Do not continue to step 11 while any platform or application blocker remains.",
+            "Blocks recovery: Yes. Individual application recovery requires an explicit selection, and normal scheduling remains blocked until every required application procedure is complete."
+          ]
+        },
+        {
+          "heading": "11. Activate normal scheduled operation after recovery",
+          "paragraphs": [
+            "Required operator action: Return to this step only after /srv/docker is fully restored, Harbr remains operational, every required application-specific recovery procedure and manual validation is complete, and no recovery blocker remains. Start the already-enabled service-check and docker-backup timers now; they were intentionally left inactive during partial recovery.",
+            "Verification command: cd /srv/docker/harbr && docker compose ps --status running --services | grep -qx harbr-experience && sudo systemctl start service-check.timer && sudo systemctl start docker-backup.timer && systemctl is-active --quiet service-check.timer && systemctl is-active --quiet docker-backup.timer && systemctl is-enabled --quiet service-check.timer && systemctl is-enabled --quiet docker-backup.timer && systemctl list-timers --all service-check.timer docker-backup.timer",
+            "Expected successful result: Harbr remains running, both normal timers are active and enabled in the current boot, and list-timers shows each timer with its next scheduled run. No immediate backup or collector service is forced by this verification beyond normal timer scheduling.",
+            "If verification fails: Stop before declaring normal operation restored. Check for unresolved application or platform recovery blockers, unit definitions, daemon-reload state, enablement, timer status, and journal diagnostics. Do not start docker-backup.timer against a partial /srv/docker tree or start service-check.timer before Harbr exists.",
+            "Blocks recovery: Yes. Completed recovery must not depend on a reboot to activate normal service-check and backup scheduling; both timers must be active, enabled, and show a next run."
           ]
         }
       ]
@@ -528,6 +588,113 @@
         ]
       },
       {
+        "id": "genmon-recovery",
+        "title": "GenMon Recovery",
+        "summary": "Restore GenMon from its protected local source checkout and verify generator monitoring without performing an application update.",
+        "sections": [
+          {
+            "heading": "1. Verify GenMon recovery prerequisites",
+            "paragraphs": [
+              "Required operator action: Complete Host Recovery, Restore Harbr, and Docker Platform first. Confirm their manual completion records, keep normal timers inactive during partial recovery, and use one dedicated Bash shell through step 10.",
+              "Verification command: cd /srv/docker/harbr && docker compose ps --status running -q harbr-experience | grep -q . && jq -e '.entries[0].id == \"host-recovery-prerequisites\" and .entries[1].id == \"restore-harbr\" and .entries[2].id == \"docker-platform\"' ui/experience/data/reference.json > /dev/null && systemctl is-active --quiet docker && sudo -u chris docker info > /dev/null && printf '%s\\n' 'Manual procedure completion confirmation required: Host Recovery, Restore Harbr, and Docker Platform steps 1-10 passed.'",
+              "Expected successful result: Harbr and Docker are operational, the prerequisite procedures are available, Docker access works as chris, and the operator confirms their recovery evidence while scheduled timers remain deferred.",
+              "If verification fails: Return to the named prerequisite and resolve every blocker. Do not restore or start GenMon on a partial host or before Harbr can guide and publish recovery evidence.",
+              "Blocks recovery: Yes. GenMon requires a recovered host, Harbr, and Docker platform."
+            ]
+          },
+          {
+            "heading": "2. Restore the protected GenMon project",
+            "paragraphs": [
+              "Required operator action: Reuse the verified working backup set. Confirm srv-docker.tar.zst and its checksum, prove its authoritative path is docker/genmon, and restore that subtree into /srv/docker without overwriting an existing GenMon tree. Do not clone, fetch, pull, or substitute a registry image.",
+              "Verification command: test -n \"$WORKING_SET\" && cd \"$WORKING_SET\" && sha256sum --check --strict --ignore-missing SHA256SUMS && tar --zstd --list --file srv-docker.tar.zst | grep -q '^docker/genmon/' && test ! -e /srv/docker/genmon && GENMON_STAGE=$(mktemp -d) && chmod 700 \"$GENMON_STAGE\" && sudo tar --zstd --extract --file srv-docker.tar.zst --directory \"$GENMON_STAGE\" --numeric-owner --acls --xattrs 'docker/genmon' && sudo install -d /srv/docker && sudo mv \"$GENMON_STAGE/docker/genmon\" /srv/docker/genmon && rmdir \"$GENMON_STAGE/docker\" \"$GENMON_STAGE\"",
+              "Expected successful result: The verified archive contains docker/genmon, the project lands at /srv/docker/genmon with archived ownership, ACLs, and extended attributes, and no existing project is overwritten.",
+              "If verification fails: Revalidate the backup set, checksum, space, mount, and archived path. Do not extract a guessed path, create empty state, clone master, or pull ldf-genmon:latest.",
+              "Blocks recovery: Yes. The protected GenMon project must be restored intact from srv-docker.tar.zst."
+            ]
+          },
+          {
+            "heading": "3. Verify recovery-critical files and persistent data",
+            "paragraphs": [
+              "Required operator action: Verify compose.yaml, the local Dockerfile, the application Git checkout, persistent configuration, and logs without displaying configuration contents, credentials, or logs.",
+              "Verification command: test -f /srv/docker/genmon/compose.yaml && test -f /srv/docker/genmon/Dockerfile && test -d /srv/docker/genmon/app/.git && test -d /srv/docker/genmon/config && test -r /srv/docker/genmon/config && test -d /srv/docker/genmon/logs && test -w /srv/docker/genmon/logs && find /srv/docker/genmon/config -mindepth 1 -maxdepth 2 -print -quit | grep -q . && stat --format='%U:%G %a %n' /srv/docker/genmon /srv/docker/genmon/app /srv/docker/genmon/config /srv/docker/genmon/logs && docker compose -f /srv/docker/genmon/compose.yaml config --quiet",
+              "Expected successful result: Every critical path exists, configuration is non-empty and readable, logs are writable, metadata is visible without content disclosure, and Compose validates without starting anything.",
+              "If verification fails: Restore missing state from the verified archive and correct ownership or modes only from authoritative evidence. Do not initialize fresh configuration, display files, weaken permissions, or start GenMon.",
+              "Blocks recovery: Yes. GenMon must not start without restored source, Compose definition, configuration, and log storage."
+            ]
+          },
+          {
+            "heading": "4. Verify the restored GenMon Git checkout",
+            "paragraphs": [
+              "Required operator action: Prove that app is the backed-up GenMon repository on master, record its recovered HEAD and working-tree state, and do not contact the remote or alter the checkout.",
+              "Verification command: test \"$(git -C /srv/docker/genmon/app remote get-url origin)\" = 'https://github.com/jgyates/genmon.git' && test \"$(git -C /srv/docker/genmon/app branch --show-current)\" = master && GENMON_RECOVERED_HEAD=$(git -C /srv/docker/genmon/app rev-parse --verify HEAD) && git -C /srv/docker/genmon/app status --short && printf 'Recovered GenMon HEAD: %s\\n' \"$GENMON_RECOVERED_HEAD\"",
+              "Expected successful result: The restored checkout identifies the authoritative origin and master branch, HEAD is recorded, and backed-up working-tree differences remain visible without fetch, pull, reset, or checkout.",
+              "If verification fails: Restore the checkout, including .git, from the verified archive. Do not clone a replacement, discard local differences, advance master, or infer a revision.",
+              "Blocks recovery: Yes. Archived Git metadata is required to reproduce the protected local image."
+            ]
+          },
+          {
+            "heading": "5. Rebuild the protected local GenMon image",
+            "paragraphs": [
+              "Required operator action: Build service genmon from restored Compose, Dockerfile, and source. This reproduces the recovery point, not an update. Docker may retrieve a missing base image declared by the Dockerfile, but must not fetch GenMon source or pull ldf-genmon:latest.",
+              "Verification command: cd /srv/docker/genmon && docker compose -f compose.yaml build genmon && docker image inspect ldf-genmon:latest --format '{{.Id}}' | grep -q '^sha256:'",
+              "Expected successful result: Docker builds ldf-genmon:latest locally from restored source and the resulting image has an inspectable ID.",
+              "If verification fails: Check the Dockerfile, build context, source, resources, and declared base-image availability. Do not git pull, run service-update, change source, or use a registry application image.",
+              "Blocks recovery: Yes. GenMon must run an image built from its protected source revision."
+            ]
+          },
+          {
+            "heading": "6. Start GenMon from the restored project",
+            "paragraphs": [
+              "Required operator action: Start only service genmon from /srv/docker/genmon/compose.yaml after restoration and build checks pass.",
+              "Verification command: cd /srv/docker/genmon && docker compose -f compose.yaml up -d genmon && GENMON_CONTAINER_ID=$(docker compose -f compose.yaml ps -q genmon) && test -n \"$GENMON_CONTAINER_ID\" && test \"$(docker inspect --format '{{.Name}}' \"$GENMON_CONTAINER_ID\")\" = /ldf-genmon",
+              "Expected successful result: Compose starts service genmon and resolves it to container ldf-genmon.",
+              "If verification fails: Inspect scoped status and a restricted recent log window, then correct only restored build, mount, network, port, or permission blockers. Do not expose environment values or credentials.",
+              "Blocks recovery: Yes. Runtime validation requires the restored container to start."
+            ]
+          },
+          {
+            "heading": "7. Verify the GenMon runtime contract",
+            "paragraphs": [
+              "Required operator action: Verify GenMon remains running, uses ldf-genmon:latest, publishes 8000:8000, and retains the Compose restart configuration. Do not print environment values.",
+              "Verification command: test -n \"$(docker compose -f /srv/docker/genmon/compose.yaml ps --status running -q genmon)\" && test \"$(docker inspect --format '{{.Config.Image}}' \"$GENMON_CONTAINER_ID\")\" = ldf-genmon:latest && docker port \"$GENMON_CONTAINER_ID\" 8000/tcp | grep -Eq '(^|:)8000$' && test \"$(docker inspect --format '{{.HostConfig.RestartPolicy.Name}}' \"$GENMON_CONTAINER_ID\")\" = unless-stopped && GENMON_RESTARTS_BEFORE=$(docker inspect --format '{{.RestartCount}}' \"$GENMON_CONTAINER_ID\") && sleep 5 && test \"$(docker inspect --format '{{.RestartCount}}' \"$GENMON_CONTAINER_ID\")\" = \"$GENMON_RESTARTS_BEFORE\"",
+              "Expected successful result: ldf-genmon stays running without a restart loop, uses the locally built image, publishes port 8000, and has restart policy unless-stopped.",
+              "If verification fails: Check protected Compose, port conflicts, resources, and restricted recent logs. Do not edit Compose merely to satisfy verification.",
+              "Blocks recovery: Yes. An unstable container or incorrect image, port, or restart contract is not recovered."
+            ]
+          },
+          {
+            "heading": "8. Verify persistent mounts and GenMon HTTP",
+            "paragraphs": [
+              "Required operator action: Verify restored configuration and log bind mounts by exact source and destination, then perform a local unauthenticated availability check without displaying response bodies, configuration, or logs.",
+              "Verification command: docker inspect \"$GENMON_CONTAINER_ID\" | jq -e '.[0].Mounts as $m | any($m[]; .Source == \"/srv/docker/genmon/config\" and .Destination == \"/etc/genmon\") and any($m[]; .Source == \"/srv/docker/genmon/logs\" and .Destination == \"/var/log\")' > /dev/null && GENMON_HTTP_STATUS=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/) && case \"$GENMON_HTTP_STATUS\" in 2??|3??) ;; *) false ;; esac",
+              "Expected successful result: ./config mounts at /etc/genmon, ./logs mounts at /var/log, and GenMon returns a success or redirect response on local port 8000.",
+              "If verification fails: Correct the restored mount, filesystem access, application startup, or publication from protected evidence. Do not print configuration, logs, bodies, secrets, or credentials.",
+              "Blocks recovery: Yes. Restored persistent state and a responding application are required."
+            ]
+          },
+          {
+            "heading": "9. Refresh and verify Infrastructure evidence",
+            "paragraphs": [
+              "Required operator action: Run the collector through service-check.service so systemd OnSuccess publishes fresh Infrastructure evidence. Prove private and public resources changed, then verify GenMon. update_available for a recovered historical Git revision is maintenance evidence, not failed recovery.",
+              "Verification command: GENMON_PRIVATE_BEFORE=$(stat --format='%Y' /var/lib/service-check/status.json 2> /dev/null || printf 0) && GENMON_PUBLIC_BEFORE=$(stat --format='%Y' /srv/docker/harbr/api/v1/infrastructure.json 2> /dev/null || printf 0) && sudo systemctl start service-check.service && GENMON_PRIVATE_AFTER=$(stat --format='%Y' /var/lib/service-check/status.json) && for attempt in {1..30}; do GENMON_PUBLIC_AFTER=$(stat --format='%Y' /srv/docker/harbr/api/v1/infrastructure.json 2> /dev/null || printf 0); test \"$GENMON_PUBLIC_AFTER\" -gt \"$GENMON_PUBLIC_BEFORE\" && break; sleep 1; done && test \"$GENMON_PRIVATE_AFTER\" -gt \"$GENMON_PRIVATE_BEFORE\" && test \"$GENMON_PUBLIC_AFTER\" -gt \"$GENMON_PUBLIC_BEFORE\" && test \"$(systemctl show service-check.service --property=Result --value)\" = success && test \"$(systemctl show harbr-infrastructure.service --property=Result --value)\" = success && GENMON_INFRASTRUCTURE_FILTER='any(.sites[]; any(.hosts[]; .docker != null and any(.docker.projects[]; .project_id == \"genmon\" and .status == \"healthy\" and any(.services[]; .service_id == \"genmon\" and .runtime_status == \"healthy\" and .image == \"ldf-genmon:latest\" and (.update_status == \"current\" or .update_status == \"update_available\")))))' && jq -e \"$GENMON_INFRASTRUCTURE_FILTER\" /srv/docker/harbr/api/v1/infrastructure.json > /dev/null && curl --fail --silent http://127.0.0.1/api/v1/infrastructure.json | jq -e \"$GENMON_INFRASTRUCTURE_FILTER\" > /dev/null",
+              "Expected successful result: Collection and publication succeed, both files are fresh, locally served Infrastructure includes healthy GenMon using ldf-genmon:latest, and image status is current or an understood update_available signal.",
+              "If verification fails: Diagnose scoped collection, publication, timestamps, JSON, route, or runtime. Do not hide an update warning by changing the recovered revision or expose private status publicly.",
+              "Blocks recovery: Yes for stale or failed evidence or unhealthy runtime. No for update_available alone when the protected revision runs correctly."
+            ]
+          },
+          {
+            "heading": "10. Confirm recovery and separate future updates",
+            "paragraphs": [
+              "Required operator action: Reconfirm revision, runtime, mounts, and HTTP, then record recovery complete. Any later service-update git-build is separate maintenance: take a fresh backup, validate the commit and fast-forward, rebuild and recreate, recheck runtime and behavior, and preserve service-check status history. Do not update during recovery.",
+              "Verification command: test \"$(git -C /srv/docker/genmon/app rev-parse --verify HEAD)\" = \"$GENMON_RECOVERED_HEAD\" && test -n \"$(docker compose -f /srv/docker/genmon/compose.yaml ps --status running -q genmon)\" && docker inspect \"$GENMON_CONTAINER_ID\" | jq -e '.[0].Mounts as $m | any($m[]; .Destination == \"/etc/genmon\") and any($m[]; .Destination == \"/var/log\")' > /dev/null && case \"$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/)\" in 2??|3??) ;; *) false ;; esac && printf '%s\\n' 'GenMon recovery complete at the protected Git revision.' 'Future git-build update remains separate backed-up maintenance.'",
+              "Expected successful result: HEAD is unchanged, GenMon runs with both mounts and a responding endpoint, and completion keeps recovery distinct from update maintenance.",
+              "If verification fails: Return to the failed restoration, Git, build, runtime, mount, HTTP, or Infrastructure step. Schedule future updates separately with a fresh backup and full git-build validation.",
+              "Blocks recovery: Yes. A newer upstream commit is not a recovery prerequisite, but protected state and revision must run and verify."
+            ]
+          }
+        ]
+      },
+      {
         "id": "jellyfin-recovery",
         "title": "Jellyfin Recovery",
         "summary": "Restore Jellyfin application state and verify its separately maintained media library.",
@@ -630,6 +797,113 @@
               "Expected successful result: Compose reports Jellyfin running with a stable restart count, the public endpoint responds, protected state remains attached, external media remains mounted, readable, and present, all manual blockers are cleared, and all four completion statements print.",
               "If verification fails: Return to the failed state, media, network, stability, HTTP, first-run, library, playback, proxy, or manual-validation check. Do not declare recovery while protected state is missing, setup is unexpectedly active, media is absent or empty, expected libraries are absent, playback or required proxy access fails, or any blocker remains.",
               "Blocks recovery: Yes. Jellyfin recovery is incomplete until protected application state, separately maintained media, and representative playback are all verified."
+            ]
+          }
+        ]
+      },
+      {
+        "id": "home-assistant-recovery",
+        "title": "Home Assistant Recovery",
+        "summary": "Restore Home Assistant's protected application state and verify that the restored instance is operational.",
+        "sections": [
+          {
+            "heading": "1. Locate the Home Assistant Compose project",
+            "paragraphs": [
+              "Required operator action: Open one dedicated Bash recovery shell and keep it open through step 10. Discover Compose definitions beneath /srv/docker, identify services whose resolved service name or image indicates Home Assistant, automatically accept one unique match, and use the constrained candidate list only when multiple valid matches exist. Do not display resolved environment values or use generated container names.",
+              "Verification command: HOMEASSISTANT_COMPOSE_CANDIDATES=$(mktemp) && HOMEASSISTANT_SERVICE_CANDIDATES=$(mktemp) && HOMEASSISTANT_MOUNT_REPORT=$(mktemp) && HOMEASSISTANT_PORT_REPORT=$(mktemp) && chmod 600 \"$HOMEASSISTANT_COMPOSE_CANDIDATES\" \"$HOMEASSISTANT_SERVICE_CANDIDATES\" \"$HOMEASSISTANT_MOUNT_REPORT\" \"$HOMEASSISTANT_PORT_REPORT\" && find /srv/docker -maxdepth 4 -type f \\( -name compose.yaml -o -name compose.yml -o -name docker-compose.yaml -o -name docker-compose.yml \\) -print0 | while IFS= read -r -d '' candidate; do docker compose -f \"$candidate\" config --quiet 2> /dev/null && printf '%s\\0' \"$candidate\"; done > \"$HOMEASSISTANT_COMPOSE_CANDIDATES\" && while IFS= read -r -d '' candidate; do docker compose -f \"$candidate\" config --format json | jq -r --arg file \"$candidate\" '.services | to_entries[] | select((.key | ascii_downcase | test(\"home.?assistant\")) or ((.value.image // \"\") | ascii_downcase | test(\"home-assistant|homeassistant\"))) | [$file, .key] | @tsv'; done < \"$HOMEASSISTANT_COMPOSE_CANDIDATES\" > \"$HOMEASSISTANT_SERVICE_CANDIDATES\" && test -s \"$HOMEASSISTANT_SERVICE_CANDIDATES\" && if test \"$(wc -l < \"$HOMEASSISTANT_SERVICE_CANDIDATES\")\" -eq 1; then IFS=$'\\t' read -r HOMEASSISTANT_COMPOSE_FILE HOMEASSISTANT_SERVICE < \"$HOMEASSISTANT_SERVICE_CANDIDATES\"; else nl -ba \"$HOMEASSISTANT_SERVICE_CANDIDATES\" >&2; select HOMEASSISTANT_SELECTION in $(seq 1 \"$(wc -l < \"$HOMEASSISTANT_SERVICE_CANDIDATES\")\"); do IFS=$'\\t' read -r HOMEASSISTANT_COMPOSE_FILE HOMEASSISTANT_SERVICE < <(sed -n \"${HOMEASSISTANT_SELECTION}p\" \"$HOMEASSISTANT_SERVICE_CANDIDATES\"); test -n \"$HOMEASSISTANT_SERVICE\" && break; done; fi && HOMEASSISTANT_PROJECT=$(docker compose -f \"$HOMEASSISTANT_COMPOSE_FILE\" config --format json | jq -r '.name') && test -n \"$HOMEASSISTANT_PROJECT\" && test \"$HOMEASSISTANT_PROJECT\" != null && docker compose -f \"$HOMEASSISTANT_COMPOSE_FILE\" config --format json | jq -r --arg service \"$HOMEASSISTANT_SERVICE\" '.services[$service].volumes[]? | [$service, .type, .source, .target] | @tsv' > \"$HOMEASSISTANT_MOUNT_REPORT\" && docker compose -f \"$HOMEASSISTANT_COMPOSE_FILE\" config --format json | jq -r --arg service \"$HOMEASSISTANT_SERVICE\" '.services[$service].ports[]? | [.target, (.published // \"\"), (.host_ip // \"\")] | @tsv' > \"$HOMEASSISTANT_PORT_REPORT\" && printf 'Compose file: %s\\nProject: %s\\nService: %s\\nKeep this shell open through step 10.\\n' \"$HOMEASSISTANT_COMPOSE_FILE\" \"$HOMEASSISTANT_PROJECT\" \"$HOMEASSISTANT_SERVICE\"",
+              "Expected successful result: One valid resolved Compose project and Home Assistant service are retained in the same shell, with restricted mount and published-port reports available for later steps and no environment values displayed.",
+              "If verification fails: Confirm the protected Compose definition was restored beneath /srv/docker and resolves successfully. If multiple valid candidates exist, repeat only the constrained numeric selection; do not type a Compose path, service name, or container name.",
+              "Blocks recovery: Yes. Home Assistant cannot be restored safely without an unambiguous valid Compose service and retained recovery context."
+            ]
+          },
+          {
+            "heading": "2. Classify Home Assistant mounts",
+            "paragraphs": [
+              "Required operator action: Classify every Compose-derived mount as protected-state, rebuildable, or runtime-support. Treat /config as protected state, cache and temporary targets as rebuildable, and known host-integration targets such as /run/dbus, /etc/localtime, and /etc/timezone as runtime support. Resolve every ambiguous mount through the constrained choices using protected evidence; do not type paths or arbitrary classifications.",
+              "Verification command: HOMEASSISTANT_CLASSIFIED_MOUNTS=$(mktemp) && chmod 600 \"$HOMEASSISTANT_CLASSIFIED_MOUNTS\" && while IFS=$'\\t' read -r service type source target; do case \"${target,,}\" in /config|/config/*) classification=protected-state ;; *cache*|/tmp|/tmp/*) classification=rebuildable ;; /run/dbus|/run/dbus/*|/etc/localtime|/etc/timezone) classification=runtime-support ;; *) printf 'Classify Compose mount source %s at target %s using protected evidence:\\n' \"$source\" \"$target\"; select classification in protected-state rebuildable runtime-support; do case \"$classification\" in protected-state|rebuildable|runtime-support) break ;; esac; done ;; esac; printf '%s\\t%s\\t%s\\t%s\\t%s\\n' \"$service\" \"$type\" \"$source\" \"$target\" \"$classification\" >> \"$HOMEASSISTANT_CLASSIFIED_MOUNTS\"; done < \"$HOMEASSISTANT_MOUNT_REPORT\" && test \"$(wc -l < \"$HOMEASSISTANT_CLASSIFIED_MOUNTS\")\" -eq \"$(wc -l < \"$HOMEASSISTANT_MOUNT_REPORT\")\" && ! grep -Eq $'\\t(unresolved|review-required)$' \"$HOMEASSISTANT_CLASSIFIED_MOUNTS\"",
+              "Expected successful result: The mode-600 report contains exactly one constrained classification for every resolved mount, and no mount remains unresolved.",
+              "If verification fails: Use protected Compose and recovery evidence to repeat the constrained classification. Do not inspect configuration contents, enter free-form infrastructure values, or classify every persistent mount as protected merely because Compose declares it.",
+              "Blocks recovery: Yes. Startup safety cannot be established while any mount role is unresolved."
+            ]
+          },
+          {
+            "heading": "3. Verify protected Home Assistant state",
+            "paragraphs": [
+              "Required operator action: Before startup, prove every protected-state bind and named volume exists, is readable, and contains bounded evidence of restored Home Assistant state. Empty protected locations block startup. Verify every runtime-support mount exists and is readable; leave rebuildable storage unmodified. Do not assume host UID/GID values or container identities.",
+              "Verification command: homeassistant_state_present() { local type=$1 source=$2 mountpoint; case \"$type\" in bind) test -d \"$source\" && test -r \"$source\" && find \"$source\" -mindepth 1 -maxdepth 3 -print -quit | grep -q . ;; volume) docker volume inspect \"$source\" > /dev/null 2>&1 && mountpoint=$(docker volume inspect --format '{{.Mountpoint}}' \"$source\") && test -n \"$mountpoint\" && sudo test -d \"$mountpoint\" && sudo test -r \"$mountpoint\" && sudo find \"$mountpoint\" -mindepth 1 -maxdepth 3 -print -quit | grep -q . ;; *) false ;; esac; } && homeassistant_runtime_present() { local type=$1 source=$2; case \"$type\" in bind) test -e \"$source\" && test -r \"$source\" ;; volume) docker volume inspect \"$source\" > /dev/null 2>&1 ;; *) false ;; esac; } && HOMEASSISTANT_MISSING_STATE=() && HOMEASSISTANT_MISSING_RUNTIME=() && while IFS=$'\\t' read -r service type source target classification; do case \"$classification\" in protected-state) homeassistant_state_present \"$type\" \"$source\" || HOMEASSISTANT_MISSING_STATE+=(\"$type:$source\") ;; runtime-support) homeassistant_runtime_present \"$type\" \"$source\" || HOMEASSISTANT_MISSING_RUNTIME+=(\"$type:$source\") ;; rebuildable) printf 'Rebuildable storage identified: %s -> %s\\n' \"$source\" \"$target\" ;; esac; done < \"$HOMEASSISTANT_CLASSIFIED_MOUNTS\" && if ((${#HOMEASSISTANT_MISSING_STATE[@]})); then printf 'Missing or empty protected Home Assistant state:\\n' >&2; printf '  %s\\n' \"${HOMEASSISTANT_MISSING_STATE[@]}\" >&2; false; fi && if ((${#HOMEASSISTANT_MISSING_RUNTIME[@]})); then printf 'Unavailable Home Assistant runtime-support mounts:\\n' >&2; printf '  %s\\n' \"${HOMEASSISTANT_MISSING_RUNTIME[@]}\" >&2; false; fi",
+              "Expected successful result: Every protected configuration and database location is readable and non-empty by a bounded check, runtime-support mounts are available, rebuildable storage remains distinct, and no filenames or contents are printed.",
+              "If verification fails: Restore each missing or empty protected bind or named volume from verified Home Assistant recovery material, or restore the declared runtime-support dependency. Do not create directories or volumes, initialize clean state, hash or fully traverse state, modify configuration, or print filenames.",
+              "Blocks recovery: Yes. Home Assistant must not start with missing or empty protected state or unavailable runtime support."
+            ]
+          },
+          {
+            "heading": "4. Verify required host dependencies",
+            "paragraphs": [
+              "Required operator action: Derive host devices, privileged mode, and added capabilities only from the selected service's resolved Compose definition. Verify each declared host device source exists and remains accessible. Record privileged and capability declarations without assuming additional hardware or changing host configuration.",
+              "Verification command: HOMEASSISTANT_HOST_REPORT=$(mktemp) && chmod 600 \"$HOMEASSISTANT_HOST_REPORT\" && docker compose -f \"$HOMEASSISTANT_COMPOSE_FILE\" config --format json | jq -r --arg service \"$HOMEASSISTANT_SERVICE\" '.services[$service] | \"privileged\\t\\(.privileged // false)\", (.cap_add[]? | \"capability\\t\\(.)\"), (.devices[]? | \"device\\t\\(.source)\\t\\(.target)\")' > \"$HOMEASSISTANT_HOST_REPORT\" && HOMEASSISTANT_MISSING_DEVICES=() && while IFS=$'\\t' read -r kind source target; do test \"$kind\" != device || test -e \"$source\" || HOMEASSISTANT_MISSING_DEVICES+=(\"$source\"); done < \"$HOMEASSISTANT_HOST_REPORT\" && if ((${#HOMEASSISTANT_MISSING_DEVICES[@]})); then printf 'Missing Compose-declared Home Assistant devices:\\n' >&2; printf '  %s\\n' \"${HOMEASSISTANT_MISSING_DEVICES[@]}\" >&2; false; fi",
+              "Expected successful result: Every device explicitly required by Compose exists, and the restricted report records only non-secret privileged, capability, and device metadata required for the restored service.",
+              "If verification fails: Restore or reconnect only the missing Compose-declared device or correct the protected Compose definition from authoritative recovery material. Do not fabricate hardware, alter permissions, add capabilities, or enable privileged mode during verification.",
+              "Blocks recovery: Yes when a Compose-declared host dependency is absent. No undeclared hardware is required by this step."
+            ]
+          },
+          {
+            "heading": "5. Verify Home Assistant networking",
+            "paragraphs": [
+              "Required operator action: Derive the selected service's actual network mode and networks from resolved Compose metadata. Accept host networking as configured, verify every normal Compose network that will actually be used, and block unsupported none or shared namespace modes. Do not fabricate a default network or create Docker networks.",
+              "Verification command: HOMEASSISTANT_NETWORK_REPORT=$(mktemp) && chmod 600 \"$HOMEASSISTANT_NETWORK_REPORT\" && HOMEASSISTANT_NETWORK_MODE=$(docker compose -f \"$HOMEASSISTANT_COMPOSE_FILE\" config --format json | jq -r --arg service \"$HOMEASSISTANT_SERVICE\" '.services[$service].network_mode // \"\"') && case \"$HOMEASSISTANT_NETWORK_MODE\" in host) : > \"$HOMEASSISTANT_NETWORK_REPORT\" ;; none) printf '%s\\n' 'Home Assistant network_mode none cannot provide the required service endpoint.' >&2; false ;; service:*|container:*) printf 'Shared network namespace requires independent recovery: %s\\n' \"$HOMEASSISTANT_NETWORK_MODE\" >&2; false ;; bridge) printf '%s\\n' bridge > \"$HOMEASSISTANT_NETWORK_REPORT\" && docker network inspect bridge > /dev/null 2>&1 ;; '') docker compose -f \"$HOMEASSISTANT_COMPOSE_FILE\" config --format json | jq -r --arg service \"$HOMEASSISTANT_SERVICE\" '. as $config | if (($config.services[$service].networks // {}) | length) > 0 then ($config.services[$service].networks | keys[]) as $key | ($config.networks[$key].name // ($config.name + \"_\" + $key)) else ($config.name + \"_default\") end' > \"$HOMEASSISTANT_NETWORK_REPORT\" && while read -r network; do test -z \"$network\" || docker network inspect \"$network\" > /dev/null 2>&1 || exit 1; done < \"$HOMEASSISTANT_NETWORK_REPORT\" ;; *) printf 'Unsupported Home Assistant network mode: %s\\n' \"$HOMEASSISTANT_NETWORK_MODE\" >&2; false ;; esac",
+              "Expected successful result: Host mode records no fabricated Docker network; normal networking records and verifies only networks Compose will attach; every actual required network exists.",
+              "If verification fails: Restore the exact missing network or shared networking dependency from protected platform evidence and repeat this check. Do not create a replacement automatically or infer a network from container names.",
+              "Blocks recovery: Yes. Home Assistant cannot start until its configured networking semantics and dependencies are restored."
+            ]
+          },
+          {
+            "heading": "6. Start the Home Assistant stack",
+            "paragraphs": [
+              "Required operator action: Immediately recheck protected state, runtime-support mounts, and declared host devices. Re-derive the selected service's network mode from the current resolved Compose definition, require it to match step 5, and recheck the saved network report according to that fresh mode before starting only the selected Home Assistant project. Discover the running container through Compose service identity and never use a generated container name.",
+              "Verification command: HOMEASSISTANT_START_BLOCKERS=() && while IFS=$'\\t' read -r service type source target classification; do case \"$classification\" in protected-state) homeassistant_state_present \"$type\" \"$source\" || HOMEASSISTANT_START_BLOCKERS+=(\"state:$source\") ;; runtime-support) homeassistant_runtime_present \"$type\" \"$source\" || HOMEASSISTANT_START_BLOCKERS+=(\"runtime:$source\") ;; esac; done < \"$HOMEASSISTANT_CLASSIFIED_MOUNTS\" && while IFS=$'\\t' read -r kind source target; do test \"$kind\" != device || test -e \"$source\" || HOMEASSISTANT_START_BLOCKERS+=(\"device:$source\"); done < \"$HOMEASSISTANT_HOST_REPORT\" && HOMEASSISTANT_START_NETWORK_MODE=$(docker compose -f \"$HOMEASSISTANT_COMPOSE_FILE\" config --format json | jq -r --arg service \"$HOMEASSISTANT_SERVICE\" '.services[$service].network_mode // \"\"') && if test \"$HOMEASSISTANT_START_NETWORK_MODE\" != \"$HOMEASSISTANT_NETWORK_MODE\"; then HOMEASSISTANT_START_BLOCKERS+=(\"network-mode-changed:$HOMEASSISTANT_NETWORK_MODE->$HOMEASSISTANT_START_NETWORK_MODE\"); fi && case \"$HOMEASSISTANT_START_NETWORK_MODE\" in host) test ! -s \"$HOMEASSISTANT_NETWORK_REPORT\" || HOMEASSISTANT_START_BLOCKERS+=(\"unexpected-host-network\") ;; ''|bridge) while read -r network; do test -z \"$network\" || docker network inspect \"$network\" > /dev/null 2>&1 || HOMEASSISTANT_START_BLOCKERS+=(\"network:$network\"); done < \"$HOMEASSISTANT_NETWORK_REPORT\" ;; none) HOMEASSISTANT_START_BLOCKERS+=(\"network-mode:none\") ;; service:*|container:*) HOMEASSISTANT_START_BLOCKERS+=(\"unverified-shared-network:$HOMEASSISTANT_START_NETWORK_MODE\") ;; *) HOMEASSISTANT_START_BLOCKERS+=(\"unsupported-network-mode:$HOMEASSISTANT_START_NETWORK_MODE\") ;; esac && if ((${#HOMEASSISTANT_START_BLOCKERS[@]})); then printf 'Home Assistant startup blocked by recovery dependencies:\\n' >&2; printf '  %s\\n' \"${HOMEASSISTANT_START_BLOCKERS[@]}\" >&2; false; fi && docker compose -f \"$HOMEASSISTANT_COMPOSE_FILE\" up -d && HOMEASSISTANT_CONTAINER_ID=$(docker compose -f \"$HOMEASSISTANT_COMPOSE_FILE\" ps -q \"$HOMEASSISTANT_SERVICE\") && test -n \"$HOMEASSISTANT_CONTAINER_ID\"",
+              "Expected successful result: Every protected state, runtime, and device dependency passes; the freshly derived network mode matches step 5 and its report recheck passes; exactly one scoped Compose startup runs; and Compose returns the selected service's container ID.",
+              "If verification fails: Restore every listed dependency before retrying. Do not create missing state or Docker resources, change Home Assistant configuration, reset authentication, or repeatedly restart the service as a verification technique.",
+              "Blocks recovery: Yes. Home Assistant verification cannot begin until the restored service starts with all declared dependencies attached."
+            ]
+          },
+          {
+            "heading": "7. Verify container stability and Home Assistant availability",
+            "paragraphs": [
+              "Required operator action: Verify the Compose service remains running, its restart count is stable, and its health check passes when one exists. Discover an endpoint from host networking, a published port targeting 8123, or the container network address as a fallback. Verify Home Assistant's unauthenticated manifest rather than accepting arbitrary HTTP success.",
+              "Verification command: test -n \"$(docker compose -f \"$HOMEASSISTANT_COMPOSE_FILE\" ps --status running -q \"$HOMEASSISTANT_SERVICE\")\" && HOMEASSISTANT_RESTARTS_BEFORE=$(docker inspect --format '{{.RestartCount}}' \"$HOMEASSISTANT_CONTAINER_ID\") && HOMEASSISTANT_HEALTH=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \"$HOMEASSISTANT_CONTAINER_ID\") && case \"$HOMEASSISTANT_HEALTH\" in none|healthy) ;; *) false ;; esac && HOMEASSISTANT_ENDPOINT= && if test \"$HOMEASSISTANT_NETWORK_MODE\" = host; then HOMEASSISTANT_ENDPOINT=http://127.0.0.1:8123; else HOMEASSISTANT_PUBLISHED=$(docker inspect \"$HOMEASSISTANT_CONTAINER_ID\" | jq -r '.[0].NetworkSettings.Ports[\"8123/tcp\"][]? | select(.HostPort != null) | [.HostIp, .HostPort] | @tsv' | head -n 1); if test -n \"$HOMEASSISTANT_PUBLISHED\"; then IFS=$'\\t' read -r ha_host ha_port <<< \"$HOMEASSISTANT_PUBLISHED\"; case \"$ha_host\" in ''|0.0.0.0|::) ha_host=127.0.0.1 ;; esac; HOMEASSISTANT_ENDPOINT=\"http://$ha_host:$ha_port\"; else HOMEASSISTANT_ADDRESS=$(docker inspect \"$HOMEASSISTANT_CONTAINER_ID\" | jq -r '.[0].NetworkSettings.Networks | to_entries[] | .value.IPAddress | select(length > 0)' | head -n 1); test -n \"$HOMEASSISTANT_ADDRESS\" && HOMEASSISTANT_ENDPOINT=\"http://$HOMEASSISTANT_ADDRESS:8123\"; fi; fi && test -n \"$HOMEASSISTANT_ENDPOINT\" && HOMEASSISTANT_MANIFEST=$(mktemp) && HOMEASSISTANT_DISCOVERY=$(mktemp) && chmod 600 \"$HOMEASSISTANT_MANIFEST\" \"$HOMEASSISTANT_DISCOVERY\" && test \"$(curl --silent --show-error --output \"$HOMEASSISTANT_MANIFEST\" --write-out '%{http_code}' \"$HOMEASSISTANT_ENDPOINT/manifest.json\")\" = 200 && jq -e '.name == \"Home Assistant\"' \"$HOMEASSISTANT_MANIFEST\" > /dev/null && test \"$(curl --silent --show-error --output \"$HOMEASSISTANT_DISCOVERY\" --write-out '%{http_code}' \"$HOMEASSISTANT_ENDPOINT/api/discovery_info\")\" = 200 && jq -e '.version | type == \"string\" and length > 0' \"$HOMEASSISTANT_DISCOVERY\" > /dev/null && HOMEASSISTANT_RESTARTS_AFTER=$(docker inspect --format '{{.RestartCount}}' \"$HOMEASSISTANT_CONTAINER_ID\") && test \"$HOMEASSISTANT_RESTARTS_BEFORE\" = \"$HOMEASSISTANT_RESTARTS_AFTER\"",
+              "Expected successful result: Compose reports the selected service running, health is healthy when defined, the restart count remains stable, and a discovered endpoint returns a valid Home Assistant manifest plus restricted discovery metadata containing version information.",
+              "If verification fails: Check scoped Compose status, declared networking, health status, and a short restricted diagnostic window that does not expose entity attributes, tokens, passwords, secrets.yaml, or configuration contents. Do not treat redirects, authentication responses, or arbitrary 2xx pages as proof of Home Assistant availability.",
+              "Blocks recovery: Yes. A stable running service and Home Assistant-specific endpoint response are required."
+            ]
+          },
+          {
+            "heading": "8. Verify restored Home Assistant application state",
+            "paragraphs": [
+              "Required operator action: Verify the unauthenticated onboarding status shows no unexpected first-time setup, the protected configuration remains attached, and the same restricted discovery metadata still provides version information. Use service stability as non-content-revealing evidence that configuration loaded without an initialization failure; do not inspect secrets or private configuration.",
+              "Verification command: HOMEASSISTANT_ONBOARDING=$(mktemp) && HOMEASSISTANT_INIT_LOG=$(mktemp) && chmod 600 \"$HOMEASSISTANT_ONBOARDING\" \"$HOMEASSISTANT_INIT_LOG\" && test \"$(curl --silent --show-error --output \"$HOMEASSISTANT_ONBOARDING\" --write-out '%{http_code}' \"$HOMEASSISTANT_ENDPOINT/api/onboarding\")\" = 200 && jq -e 'type == \"array\" and length > 0 and all(.[]; .done == true)' \"$HOMEASSISTANT_ONBOARDING\" > /dev/null && jq -e '.name == \"Home Assistant\"' \"$HOMEASSISTANT_MANIFEST\" > /dev/null && jq -e '.version | type == \"string\" and length > 0' \"$HOMEASSISTANT_DISCOVERY\" > /dev/null && while IFS=$'\\t' read -r service type source target classification; do test \"$classification\" != protected-state || docker inspect \"$HOMEASSISTANT_CONTAINER_ID\" | jq -e --arg source \"$source\" --arg target \"$target\" 'any(.[0].Mounts[]; .Destination == $target and (.Source == $source or .Name == $source))' > /dev/null; done < \"$HOMEASSISTANT_CLASSIFIED_MOUNTS\" && test -n \"$(docker compose -f \"$HOMEASSISTANT_COMPOSE_FILE\" ps --status running -q \"$HOMEASSISTANT_SERVICE\")\" && docker compose -f \"$HOMEASSISTANT_COMPOSE_FILE\" logs --since 15m --tail 200 --no-color \"$HOMEASSISTANT_SERVICE\" > \"$HOMEASSISTANT_INIT_LOG\" 2>&1 && ! grep -Eiq '(fatal|critical).*(home assistant|initiali[sz]ation)|home assistant (core )?failed to initiali[sz]e|error (loading|validating) (home assistant )?configuration|(home assistant configuration|configuration\\.yaml|homeassistant\\.config).*(load|validat).*(failed|failure|fatal)|(homeassistant[^ ]*recorder|recorder|sqlite|home assistant database).*(corrupt|malformed|initiali[sz](e|ation).*(failed|failure|fatal)|migration.*(failed|failure|fatal))|database migration.*(failed|failure|fatal)' \"$HOMEASSISTANT_INIT_LOG\"",
+              "Expected successful result: Every onboarding task is complete, protected mounts remain attached, Home Assistant remains running with version evidence, and the restricted recent log window contains no narrowly matched fatal initialization, configuration loading/validation, recorder or database corruption/initialization, or database migration failure. Log contents are not printed.",
+              "If verification fails: Stop if onboarding appears, a protected mount is absent, the service is unstable, version evidence is unavailable, or any narrowly matched initialization failure is present. Ordinary warnings, unavailable integrations, and recoverable external-dependency errors do not block this check. Inspect the mode-600 file only through approved secret-safe handling; never print it or expose secrets.yaml, tokens, passwords, entity attributes, or private configuration.",
+              "Blocks recovery: Yes. Unexpected first-run onboarding, missing restored configuration, or initialization instability means protected Home Assistant state was not safely recognized."
+            ]
+          },
+          {
+            "heading": "9. Complete manual Home Assistant validation",
+            "paragraphs": [
+              "Required operator action: Using the restored operator access, manually confirm the expected dashboards, users, integrations, automations, scripts, scenes, devices, entities, notifications, and representative automation behavior. When an external URL is configured, confirm access through Nginx Proxy Manager. Record exceptions without requiring exact entity counts or restoring dependent external systems in this procedure.",
+              "Verification command: printf '%s\\n' 'Manual confirmation required: expected dashboards and users are present.' 'Manual confirmation required: expected integrations, automations, scripts, and scenes are present.' 'Manual confirmation required: expected devices, entities, and notifications are present without requiring exact counts.' 'Manual confirmation required: the configured external URL works through Nginx Proxy Manager, when applicable.' 'Manual confirmation required: one representative automation executes correctly.'",
+              "Expected successful result: The operator records each applicable confirmation, documents any intentionally unavailable dependent integration separately, and verifies one representative automation without exposing credentials or entity attributes.",
+              "If verification fails: Keep the missing dashboard, user, integration, automation, script, scene, device, entity, notification, external-access path, or representative automation as an explicit blocker. Recover dependent services in their own procedures; do not modify configuration merely to make this check pass.",
+              "Blocks recovery: Yes. Manual confirmation and successful representative automation are required before Home Assistant recovery is complete."
+            ]
+          },
+          {
+            "heading": "10. Confirm Home Assistant recovery is complete",
+            "paragraphs": [
+              "Required operator action: Proceed only after every automatic check and manual confirmation passes. Reconfirm the Compose service, stable restart count, Home Assistant-specific endpoint, protected state, runtime-support mounts, and declared host devices, then explicitly record completion.",
+              "Verification command: test -n \"$(docker compose -f \"$HOMEASSISTANT_COMPOSE_FILE\" ps --status running -q \"$HOMEASSISTANT_SERVICE\")\" && HOMEASSISTANT_FINAL_RESTARTS=$(docker inspect --format '{{.RestartCount}}' \"$HOMEASSISTANT_CONTAINER_ID\") && test \"$HOMEASSISTANT_FINAL_RESTARTS\" = \"$HOMEASSISTANT_RESTARTS_AFTER\" && test \"$(curl --silent --show-error --output \"$HOMEASSISTANT_MANIFEST\" --write-out '%{http_code}' \"$HOMEASSISTANT_ENDPOINT/manifest.json\")\" = 200 && jq -e '.name == \"Home Assistant\"' \"$HOMEASSISTANT_MANIFEST\" > /dev/null && test \"$(curl --silent --show-error --output \"$HOMEASSISTANT_DISCOVERY\" --write-out '%{http_code}' \"$HOMEASSISTANT_ENDPOINT/api/discovery_info\")\" = 200 && jq -e '.version | type == \"string\" and length > 0' \"$HOMEASSISTANT_DISCOVERY\" > /dev/null && test \"$(curl --silent --show-error --output \"$HOMEASSISTANT_ONBOARDING\" --write-out '%{http_code}' \"$HOMEASSISTANT_ENDPOINT/api/onboarding\")\" = 200 && jq -e 'all(.[]; .done == true)' \"$HOMEASSISTANT_ONBOARDING\" > /dev/null && while IFS=$'\\t' read -r service type source target classification; do case \"$classification\" in protected-state) homeassistant_state_present \"$type\" \"$source\" ;; runtime-support) homeassistant_runtime_present \"$type\" \"$source\" ;; esac && if test \"$classification\" = protected-state || test \"$classification\" = runtime-support; then docker inspect \"$HOMEASSISTANT_CONTAINER_ID\" | jq -e --arg source \"$source\" --arg target \"$target\" 'any(.[0].Mounts[]; .Destination == $target and (.Source == $source or .Name == $source))' > /dev/null; fi || exit 1; done < \"$HOMEASSISTANT_CLASSIFIED_MOUNTS\" && while IFS=$'\\t' read -r kind source target; do case \"$kind\" in device) test -e \"$source\" && docker inspect \"$HOMEASSISTANT_CONTAINER_ID\" | jq -e --arg source \"$source\" --arg target \"$target\" 'any(.[0].HostConfig.Devices[]?; .PathOnHost == $source and .PathInContainer == $target)' > /dev/null ;; privileged) docker inspect \"$HOMEASSISTANT_CONTAINER_ID\" | jq -e --arg declared \"$source\" '.[0].HostConfig.Privileged == ($declared == \"true\")' > /dev/null ;; capability) docker inspect \"$HOMEASSISTANT_CONTAINER_ID\" | jq -e --arg capability \"$source\" 'any(.[0].HostConfig.CapAdd[]?; . == $capability)' > /dev/null ;; esac || exit 1; done < \"$HOMEASSISTANT_HOST_REPORT\" && printf '%s\\n' 'Home Assistant application state has been restored.' 'Configuration has been successfully recognized.' 'Representative automation has been manually validated.' 'Home Assistant recovery is complete.'",
+              "Expected successful result: The service remains stable, the Home Assistant manifest is available, protected configuration and runtime dependencies remain attached, declared devices remain present, manual blockers are cleared, and all four completion statements print.",
+              "If verification fails: Return to the failed state, dependency, networking, stability, endpoint, onboarding, or manual check. Do not declare success while first-run onboarding appears, protected configuration is missing, configuration failed to load, runtime dependencies are absent, expected automations are missing, representative automation fails, or any blocker remains.",
+              "Blocks recovery: Yes. Home Assistant recovery is incomplete until restored configuration is recognized and representative automation succeeds."
             ]
           }
         ]

@@ -398,6 +398,14 @@ PREREQUISITES_CONFIG="$PREREQUISITES_CONFIG" \
 SITE_CONFIG="$SITE_CONFIG" \
   "$INVENTORY_GENERATOR" "$TMP_DIR/inventory.json"
 
+# Infrastructure is published by its own non-root service-check adapter. Keep
+# the most recent valid document in the aggregate refresh without collecting
+# or inspecting infrastructure here.
+infrastructure_source="$API_DIR/infrastructure.json"
+[[ -r "$infrastructure_source" ]] || infrastructure_source="$HARBR_ROOT/api/bootstrap/v1/infrastructure.json"
+jq empty "$infrastructure_source"
+cp "$infrastructure_source" "$TMP_DIR/infrastructure.json"
+
 jq -n \
   --arg site_id "$site_id" \
   --arg site_name "$site_name" \
@@ -424,7 +432,8 @@ jq -n \
       history: "/api/v1/history.json",
       coverage: "/api/v1/coverage.json",
       system: "/api/v1/system.json",
-      inventory: "/api/v1/inventory.json"
+      inventory: "/api/v1/inventory.json",
+      infrastructure: "/api/v1/infrastructure.json"
     }
   }' > "$TMP_DIR/index.json"
 
@@ -432,7 +441,7 @@ for file in "$TMP_DIR"/*.json; do
   jq empty "$file"
 done
 
-for name in site confidence story history coverage system inventory index; do
+for name in site confidence story history coverage system inventory infrastructure index; do
   publish_temp="$API_DIR/.$name.json.publish.$$"
   install -m 0644 "$TMP_DIR/$name.json" "$publish_temp"
   mv -f "$publish_temp" "$API_DIR/$name.json"
