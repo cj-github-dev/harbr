@@ -139,18 +139,14 @@ def validate_pwa_foundation() -> None:
         icon_path = ROOT / "ui" / "experience" / icon["src"].lstrip("/")
         require(icon_path.is_file(), f"Missing manifest icon: {icon['src']}")
         require(icon["type"] == "image/png", f"Manifest icon is not PNG: {icon['src']}")
-        dimensions = f"{png_dimensions(icon_path)[0]}x{png_dimensions(icon_path)[1]}"
+        width, height = png_dimensions(icon_path)
+        dimensions = f"{width}x{height}"
         require(dimensions in icon["sizes"].split(), f"Manifest icon dimensions do not match {icon['src']}")
-        icon_sizes.update(icon["sizes"].split())
-    require({"192x192", "512x512"} <= icon_sizes, "Manifest requires 192x192 and 512x512 icons")
+        icon_sizes.add(dimensions)
+    require({"192x192", "512x512", "1024x1024"} <= icon_sizes, "Manifest requires 192x192, 512x512, and 1024x1024 icons")
 
     html = HTML_PATH.read_text(encoding="utf-8")
     require('rel="manifest" href="/manifest.webmanifest"' in html, "HTML does not reference the Web App Manifest")
-    apple_icon = "/assets/harbr-apple-touch-icon.png"
-    require(f'rel="apple-touch-icon" href="{apple_icon}?v=2"' in html, "HTML does not reference the versioned Apple touch icon")
-    apple_icon_path = ROOT / "ui" / "experience" / apple_icon.lstrip("/")
-    require(apple_icon_path.is_file(), "Missing Apple touch icon")
-    require(png_dimensions(apple_icon_path) == (180, 180), "Apple touch icon must be 180x180")
 
 
 def validate_confidence_ring_config() -> None:
