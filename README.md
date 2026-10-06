@@ -20,6 +20,13 @@ The Docker Compose service exposes the UI and read-only JSON API together.
 Run `docker compose up -d`, then open `http://localhost:8088`. The experience
 reads live documents from `/api/v1/`; it never inspects the host directly.
 
+Harbr is installable as a Progressive Web App. On iPhone, open the production
+HTTPS site in Safari, tap **Share**, choose **Add to Home Screen**, and confirm
+**Add**. This foundation does not include a service worker, offline behavior,
+or recovery-data caching; operational `/api/v1/` data continues to be fetched
+live with `cache: 'no-store'`. Full PWA behavior requires HTTPS, as provided by
+Harbr's expected production deployment.
+
 ## API source and runtime ownership
 
 Harbr keeps source data and generated deployment data in separate locations:

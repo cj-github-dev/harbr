@@ -1,0 +1,22 @@
+{
+  "name": "Harbr",
+  "short_name": "Harbr",
+  "description": "Read-only recovery confidence for answering: Can I recover right now?",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#07161a",
+  "theme_color": "#07161a",
+  "icons": [
+    {
+      "src": "/assets/harbr-app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/harbr-app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
